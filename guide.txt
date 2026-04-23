@@ -1,0 +1,6 @@
+step 1: create your own branch
+step 2: add changes
+
+step 3: git add . // this means you're adding all the things you changes
+step 4: git commit -m "added this feature"
+step 5: git push -u branchName
