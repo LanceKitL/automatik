@@ -1,4 +1,4 @@
-from mysql.connector import pooling
+from mysql.connector import pooling, Error
 
 # creating a connection
 pool = pooling.MySQLConnectionPool(
@@ -29,22 +29,27 @@ def run_query(query, params=None, fetch=None):
     """
     conn = pool.get_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute(query, params)
-    result = None
     
-    if fetch == "one":
-        result = cursor.fetchone()
-    elif fetch == "all":
-        result = cursor.fetchall()
-    else:
-        conn.commit()
+    try:
+        cursor.execute(query, params)
+        result = None
         
-        if query.strip().upper().startswith("INSERT"):
-            result = cursor.lastrowid
+        if fetch == "one":
+            result = cursor.fetchone()
+        elif fetch == "all":
+            result = cursor.fetchall()
         else:
-            result = cursor.rowcount
+            conn.commit()
+            
+            if query.strip().upper().startswith("INSERT"):
+                result = cursor.lastrowid
+            else:
+                result = cursor.rowcount
 
-        
-    cursor.close()
-    conn.close()
-    return result
+        return result
+    except Error as e:
+        conn.rollback()
+        raise e
+    finally:        
+        cursor.close()
+        conn.close()

@@ -1,7 +1,12 @@
-from flask import Blueprint, jsonify, request, session
 from werkzeug.security import generate_password_hash, check_password_hash
+from validators.middleware import role_required, logged_in_required
+from flask import Blueprint, jsonify, request, session
+from utils.log import audit_log
 from datetime import datetime
 from conn import run_query
+from mysql.connector import Error
+import random
+import string
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -38,11 +43,27 @@ def login():
     return jsonify({"message": "Logged in successfull!"})
 
 # log this to audit logs!
+@auth_bp.route("/createCustomerAcc/<email>", methods=["POST"])
+@logged_in_required
+@role_required("admin", "agent")
+def create_customer(email):
+    if not email:
+        return jsonify({"message": "customer email is required."})
+    # for password
+    characters = string.ascii_letters + string.digits + string.punctuation
 
-@auth_bp.route("/convert_customer")
-def create_customer(name,email):
+    # fields 
+    username = 'CUST'.join(random.choice(characters) for _ in range(3))
+    password = ''.join(random.choice(characters) for _ in range(8))
+    role = 'customer'
+    query = "INSERT INTO users (username, hashed_password, email,role) VALUES (%s,%s,%s,%s)"
+    param = (username,password,email,role)
+    res = run_query(query,param)
+    audit_log(session["user"],"Create Customer Account", "users,customer_details")
+
+        
+    return jsonify({"message": "customer account, created successfully!"}), 200
     
-    return ""
 
 # 
 @auth_bp.route('/register', methods=["POST"])

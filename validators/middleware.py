@@ -15,7 +15,7 @@ def logged_in_required(f):
         return f(*args, **kwargs)
     return wrapper
     
-def role_required(role):
+def role_required(*roles):
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
@@ -31,7 +31,7 @@ def role_required(role):
                     "message": "User not found."
                 })
                 
-            if user["role"] != role:
+            if user["role"].lower() not in [r.lower() for r in roles]:
                 return jsonify({"message": "Forbidden Access."}), 401
             
             return f(*args, **kwargs)
