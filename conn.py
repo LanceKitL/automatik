@@ -6,5 +6,5 @@ def connection():
         host="localhost",
         user="root",
         password="",
-        database="tutorial"
+        database="automatik"
     )
