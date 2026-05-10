@@ -1,5 +1,5 @@
 from functools import wraps
-from flask import session,jsonify,request, redirect,url_for
+from flask import session,jsonify
 from conn import run_query
 
 
@@ -9,7 +9,7 @@ def logged_in_required(f):
         
         if "user" not in session:
             return jsonify({
-                "message": "Access Denied"
+                "message": "You are not logged in. this route is intended for logged in users."
             }), 401
             
         return f(*args, **kwargs)

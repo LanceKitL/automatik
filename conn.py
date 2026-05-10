@@ -1,13 +1,17 @@
 from mysql.connector import pooling, Error
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 # creating a connection
 pool = pooling.MySQLConnectionPool(
         pool_name="mypool",
         pool_size=5,
-        host="localhost",
-        user="root",
+        host=os.getenv("DB_HOST"),
+        user=os.getenv("DB_USER"),
         password="",
-        database="automatik"
+        database=os.getenv("DB_NAME")
     )
 
 def run_query(query, params=None, fetch=None):
