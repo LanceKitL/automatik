@@ -5,10 +5,9 @@ def searchVehicle(params):
     res = run_query("""SELECT * FROM vehicles WHERE model OR fuel_type OR year LIKE '%\' %s \'%' """, (params, ), fetch="all")
     
     if not res:
-        return jsonify({"message": f"vehicle with attribute {params} not found."})
+        return jsonify({"message": f"vehicle with attribute {params} not found."}), 400
     
     return jsonify({"message": res})
-
 
 def createVehicle():
     data = request.get_json()
