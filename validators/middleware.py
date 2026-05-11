@@ -15,23 +15,12 @@ def logged_in_required(f):
         return f(*args, **kwargs)
     return wrapper
     
-def role_required(role):
+def role_required(*roles):
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
-            if "user" not in session:
-                return jsonify({
-                    "message": "Access Denied"
-                }), 401
             
-            user = run_query("SELECT * FROM users WHERE user_id = %s", (session.get("user"),), fetch="one")
-            
-            if not user:
-                return jsonify({
-                    "message": "User not found."
-                })
-                
-            if user["role"] != role:
+            if session["role"].lower() not in [r.lower() for r in roles]:
                 return jsonify({"message": "Forbidden Access."}), 401
             
             return f(*args, **kwargs)
