@@ -34,7 +34,7 @@ def createTask():
     conn.commit()
     cursor.close()
     conn.close()
-    return jsonify({"message": "Task created successfully!"}), 201 #201 - CREATED
+    return jsonify({"message": "Task created successfully!"}), 201
 
 # GET - Agent tasks
 def getTaskById(task_id):
@@ -47,8 +47,8 @@ def getTaskById(task_id):
     conn.close()
     
     if task is None:
-        return jsonify({"message": "Task not found!"}), 404 #404 - NOT FOUND
-    return jsonify({"data": task}), 200 #200 - OK
+        return jsonify({"message": "Task not found!"}), 404 
+    return jsonify({"data": task}), 200 
  
 # UPDATE - Agent tasks
 def updateTask(task_id):

@@ -29,7 +29,7 @@ def getDocumentsBySale(sale_id):
     documents = cursor.fetchall()
     cursor.close()
     conn.close()
-    if not documents:
+    if documents == []:
         return jsonify({"message": "No documents found!"}), 404
     return jsonify({"data": documents}), 200
  
