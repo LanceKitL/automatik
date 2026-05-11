@@ -29,11 +29,12 @@ def createTask():
     cursor.execute(
         "INSERT INTO agent_tasks (agent_id, inquiry_id, task_type, title, due_date, status, notes) VALUES (%s, %s, %s, %s, %s, %s, %s)",
         (agent_id, inquiry_id, task_type, title, due_date, status, notes)
+        
     )
     conn.commit()
     cursor.close()
     conn.close()
-    return jsonify({"message": "Task created successfully!"})
+    return jsonify({"message": "Task created successfully!"}), 201 #201 - CREATED
 
 # GET - Agent tasks
 def getTaskById(task_id):
@@ -44,7 +45,10 @@ def getTaskById(task_id):
     task = cursor.fetchone()
     cursor.close()
     conn.close()
-    return jsonify({"data": task})
+    
+    if task is None:
+        return jsonify({"message": "Task not found!"}), 404 #404 - NOT FOUND
+    return jsonify({"data": task}), 200 #200 - OK
  
 # UPDATE - Agent tasks
 def updateTask(task_id):
@@ -67,7 +71,7 @@ def updateTask(task_id):
     conn.commit()
     cursor.close()
     conn.close()
-    return jsonify({"message": f"Task {task_id} updated successfully!"})
+    return jsonify({"message": f"Task {task_id} updated successfully!"}), 200
  
 # DELETE - Agent tasks
 def deleteTask(task_id):
@@ -78,5 +82,5 @@ def deleteTask(task_id):
     conn.commit()
     cursor.close()
     conn.close()
-    return jsonify({"message": f"Task {task_id} deleted successfully!"})
+    return jsonify({"message": "Task deleted successfully!"}), 200
  

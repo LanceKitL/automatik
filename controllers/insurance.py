@@ -11,7 +11,9 @@ def getInsuranceBySale(sale_id):
     records = cursor.fetchall()
     cursor.close()
     conn.close()
-    return jsonify({"data": records})
+    if not records:
+        return jsonify({"message": "No insurance records found!"}), 404
+    return jsonify({"data": records}), 200
  
 # POST - Add insurance
 def addInsurance(sale_id):
@@ -36,4 +38,4 @@ def addInsurance(sale_id):
     conn.commit()
     cursor.close()
     conn.close()
-    return jsonify({"message": f"Insurance record added for sale {sale_id} successfully!"})
+    return jsonify({"message": f"Insurance record added for sale {sale_id} successfully!"}),201

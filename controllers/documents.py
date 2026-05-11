@@ -18,7 +18,7 @@ def uploadContract(sale_id):
     conn.commit()
     cursor.close()
     conn.close()
-    return jsonify({"message": f"Contract for sale {sale_id} uploaded successfully!"})
+    return jsonify({"message": f"Contract for sale {sale_id} uploaded successfully!"}), 201
  
 #GET - DOCUMENTS
 def getDocumentsBySale(sale_id):
@@ -29,7 +29,9 @@ def getDocumentsBySale(sale_id):
     documents = cursor.fetchall()
     cursor.close()
     conn.close()
-    return jsonify({"data": documents})
+    if not documents:
+        return jsonify({"message": "No documents found!"}), 404
+    return jsonify({"data": documents}), 200
  
 # POST - UPLOAD DOCUMENT
 def uploadDocument(sale_id):
@@ -48,4 +50,4 @@ def uploadDocument(sale_id):
     conn.commit()
     cursor.close()
     conn.close()
-    return jsonify({"message": f"Document uploaded for sale {sale_id} successfully!"})
+    return jsonify({"message": f"Document uploaded for sale {sale_id} successfully!"}),201
