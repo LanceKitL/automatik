@@ -37,7 +37,7 @@ def get_vehicles(id):
 def update_vehicle(id): return updateVehicleHandler(id)
 
 # DELETING VEHICLE
-@vehicles_bp.route("/<int:id>", methods=["PUT"])
+@vehicles_bp.route("/<int:id>", methods=["DELETE"])
 @role_required("admin")
 def delete_vehicle(id): return deleteVehicleHandler(id)
 
@@ -57,7 +57,6 @@ def update_vehicle_photo(id): return updateVehiclePhoto(id)
 
 @vehicles_bp.route("/search")
 def search():
-    data = request.get_json()
-    params = data["params"]
-    return searchVehicle(params)
+    value = request.args.get("param")
+    return searchVehicle(value)
     

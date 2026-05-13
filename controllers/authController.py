@@ -15,7 +15,13 @@ def loginHandler():
     if not username and not email:
         return jsonify({"message": "use your username or email."}) 
     
-    user = run_query("SELECT * FROM users WHERE username = %s OR email = %s", (username, email), fetch="one")
+    user = run_query("""
+                     SELECT * FROM users 
+                     WHERE username = %s 
+                     OR email = %s 
+                     """, 
+                     (username, email), 
+                     fetch="one")
     
     if not user:
         return jsonify({"message": "user not found."}), 403
@@ -35,7 +41,11 @@ def loginHandler():
 
 
     # update to active
-    run_query("UPDATE users SET is_active = %s WHERE user_id = %s", (1,session["user"]))
+    run_query(""" 
+              UPDATE users SET is_active = %s 
+              WHERE user_id = %s 
+              """, 
+              (1,session["user"]))
     
     return jsonify({"message": "Logged in successfull!"}), 200
     
@@ -46,13 +56,20 @@ def customerAccountHandler(email):
     characters = string.ascii_letters + string.digits + string.punctuation
 
     username = 'CUST'.join(random.choice(characters) for _ in range(3))
-    password = ''.join(random.choice(characters) for _ in range(8))
+    password = ''.join(random.choice(characters) for _ in range(8)) # insert the raw not hashed password to the email for the customer to know their password and later change it.
     role = 'customer'
-    query = "INSERT INTO users (username, hashed_password, email,role) VALUES (%s,%s,%s,%s)"
+    query = """ 
+            INSERT INTO users 
+            (username, hashed_password, email,role) 
+            VALUES (%s,%s,%s,%s) 
+            """
     param = (username,password,email,role)
     res = run_query(query,param)
-    audit_log(session["user"],"Create Customer Account", "users,customer_details")
-        
+    audit = audit_log(session["user"],"Create Customer Account", "users,customer_details")
+    
+    if not res and not audit:
+        return jsonify({"message": "customer account creation failed."}), 400
+    
     return jsonify({"message": "customer account, created successfully!"}), 200
 
 def AgentAccountHandler():
@@ -70,9 +87,11 @@ def AgentAccountHandler():
     hashedPassword = generate_password_hash(data["password"])
     print(hashedPassword)
         
-    result = run_query(""" INSERT INTO users 
+    result = run_query(""" 
+                       INSERT INTO users 
                        (username,email,hashed_password, role, email_verified) 
-                       VALUES (%s,%s,%s,%s,%s)""", 
+                       VALUES (%s,%s,%s,%s,%s)
+                       """, 
                        (data["username"], data["email"], hashedPassword, 'agent', 0))
     
     return jsonify({"message": "success!", 
@@ -81,8 +100,10 @@ def AgentAccountHandler():
 def logoutHandler():
     user = session["user"]
     last_login = datetime.now()
-    run_query("""UPDATE users SET last_login = %s, is_active = %s 
-              WHERE user_id = %s """, 
+    run_query("""
+              UPDATE users SET last_login = %s, is_active = %s 
+              WHERE user_id = %s 
+              """, 
               (last_login,0, user))
     
     session.clear()

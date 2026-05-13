@@ -1,5 +1,5 @@
 from mysql.connector import pooling, Error
-
+from flask import jsonify
 # creating a connection
 pool = pooling.MySQLConnectionPool(
         pool_name="mypool",

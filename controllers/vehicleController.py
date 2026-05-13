@@ -2,7 +2,12 @@ from flask import request, jsonify
 from conn import run_query
 
 def searchVehicle(params):
-    res = run_query("""SELECT * FROM vehicles WHERE model OR fuel_type OR year LIKE '%\' %s \'%' """, (params, ), fetch="all")
+    res = run_query("""
+                    SELECT * FROM vehicles 
+                    WHERE model LIKE %s OR fuel_type LIKE %s OR year LIKE %s OR CAST(year as CHAR) LIKE %s """, 
+                    (f"%{params}%", f"%{params}%", f"%{params}%", f"%{params}%"), 
+                    fetch="all")
+    #sample search query: http://localhost:5000/vehicles/search?param=2020
     
     if not res:
         return jsonify({"message": f"vehicle with attribute {params} not found."}), 400
@@ -12,7 +17,7 @@ def searchVehicle(params):
 def createVehicle():
     data = request.get_json()
     body_type = data.get("body_type")
-    brand = data["body"]
+    brand = data["brand"]
     color = data.get("color")
     fuel_type = data.get("fuel_type")
     model = data["model"]
@@ -24,13 +29,14 @@ def createVehicle():
     vin = data["vin"]
     year = data["year"]
     
-    car = run_query(""" INSERT INTO vehicles 
-                    (body_type, brand, color, fuel_type, model, price, seating_capacity, specs_json
-                    status, transmission, vin, year)
-                    VALUES
-                    (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    car = run_query(""" 
+                    INSERT INTO vehicles 
+                    (body_type, brand, color, fuel_type, model, price, seating_capacity, 
+                    specs_json, status, transmission, vin, year)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, 
-                    (body_type, brand, color, fuel_type, model, price ,seating_capacity, specs_json, status, transmission, vin, year ))
+                    (body_type, brand, color, fuel_type, model, price ,seating_capacity, 
+                     specs_json, status, transmission, vin, year ))
 
     if not car: 
         return jsonify({"message": "adding did not execute successfully."}), 400
@@ -52,12 +58,15 @@ def updateVehicleHandler(id):
     vin = data["vin"]
     year = data["year"]
     
-    car = run_query(""" UPDATE vehicles SET 
-                    body_type = %s, brand = %s, color = %s, fuel_type = %s, model = %s, price = %s
+    car = run_query(""" 
+                    UPDATE vehicles SET 
+                    body_type = %s, brand = %s, color = %s, fuel_type = %s, model = %s, price = %s,
                     seating_capacity = %s, specs_json = %s, status = %s, transmission = %s,
                     vin = %s, year = %s 
+                    WHERE vehicle_id = %s
                     """, 
-                    (body_type, brand, color, fuel_type, model, price ,seating_capacity, specs_json, status, transmission, vin, year ))
+                    (body_type, brand, color, fuel_type, model, price, 
+                     seating_capacity, specs_json, status, transmission, vin, year, id ))
 
     if not car: 
         return jsonify({"message": "update did not execute successfully."}), 400
@@ -65,7 +74,11 @@ def updateVehicleHandler(id):
     return jsonify({"message": f"vehicle {id} updated successfully!"}), 200
 
 def deleteVehicleHandler(id):
-    car = run_query("DELETE FROM vehicles WHERE vehicle_id = %s", (id, ))
+    car = run_query("""
+                    DELETE FROM vehicles 
+                    WHERE vehicle_id = %s 
+                    """, 
+                    (id, ))
 
     if not car: 
         return jsonify({"message": "deletion did not execute successfully."}), 400
@@ -78,8 +91,10 @@ def updateVehiclePhoto(id):
     sort_order = data["sort_order"]
     uploaded_at = data["uploaded_at"]
     
-    res = run_query("""UPDATE vehicle_photos 
-                    SET photo_url = %s, sort_order = %s, uploaded_at = %s WHERE vehicle_id = %s""",
+    res = run_query("""
+                    UPDATE vehicle_photos 
+                    SET photo_url = %s, sort_order = %s, uploaded_at = %s 
+                    WHERE vehicle_id = %s""",
                     (photo_url,sort_order,uploaded_at, id))
     
     if not res: 
