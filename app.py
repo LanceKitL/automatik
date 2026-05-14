@@ -11,6 +11,7 @@ from routes.admin import admin_bp
 from routes.auth import auth_bp
 from routes.vehicles import vehicles_bp
 from routes.inquiries import inquiry_bp
+from routes.supplier import supplier_bp
 
 app = Flask(__name__)
 CORS(app,supports_credentials=True, origins=["http://localhost:5173"])
@@ -28,6 +29,7 @@ app.register_blueprint(admin_bp, url_prefix="/admin")
 app.register_blueprint(auth_bp, url_prefix="/auth")
 app.register_blueprint(vehicles_bp, url_prefix="/vehicle")
 app.register_blueprint(inquiry_bp, url_prefix="/inquiry")
+app.register_blueprint(supplier_bp, url_prefix="/supplier")
 
 @app.route("/health")
 def index():
