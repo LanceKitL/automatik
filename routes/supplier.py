@@ -13,7 +13,7 @@ supplier_bp = Blueprint('suppliers', __name__)
 #List all suppliers
 @supplier_bp.route('/')
 def suppliers ():
-    res = run_query("SELECT * FROM suppliers", fetch=all)
+    res = run_query("SELECT * FROM suppliers", fetch= "all")
     return jsonify ({"data": res}), 200
 
 #Create Suppliers
@@ -38,4 +38,5 @@ def update_suppliers(id): return updateSupplier(id)
 
 #Delete Suppliers
 @supplier_bp.route('/<int:id>', methods = ['DELETE'])
+@role_required('admin')
 def delete_suppliers(id): return deleteSupplier(id)
