@@ -2,7 +2,9 @@ from flask import request, jsonify
 from conn import run_query
 
 def searchSupplier (params):
-    res = run_query('SELECT * FROM suppliers')
+    res = run_query('SELECT * FROM suppliers'
+    'WHERE company_name LIKE %s OR contact_name LIKE %s OR contact_email LIKE %s OR contact_phone LIKE %s',
+    (f"%{params}%", f"%{params}%", f"%{params}%", f"%{params}%"))
 
     if not res:
         return jsonify ({"message": "Supplier not found"})
@@ -36,24 +38,20 @@ def createSupplier ():
 
 def updateSupplier(id):
     data = request.get_json()
-    supplier_id = data.get("supplier_id")
+
     company_name = data.get("company_name")
     contact_name = data.get("contact_name")
     contact_email = data.get("contact_email")
     contact_phone = data.get("contact_phone")
     address = data.get("address")
     is_active = data.get("is_active")
-    created_at = data.get("created_at")
 
     supplier = run_query(""" 
-                    UPDATE INTO suppliers 
-                    (supplier_id, company_name, contact_name, contact_email, contact_phone, address, is_active, 
-                    created_at
-                    WHERE supplier_id = %s)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                    UPDATE suppliers 
+                    SET company_name = %s, contact_name = %s, contact_email = %s, contact_phone = %s, address = %s, is_active = %s
+                    WHERE supplier_id = %s
                     """, 
-                    (supplier_id, company_name, contact_name, contact_email, contact_phone, address ,is_active, 
-                     created_at, id ))
+                    (company_name, contact_name, contact_email, contact_phone, address, is_active, id))
     
     if not supplier:
         return jsonify({"message": "Updating did not execute succesfully"}), 400
