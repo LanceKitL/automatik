@@ -84,7 +84,7 @@ def createVehicle():
 def updateVehicleHandler(id):
     data = request.get_json()
     body_type = data.get("body_type")
-    brand = data["body"]
+    brand = data["brand"]
     color = data.get("color")
     fuel_type = data.get("fuel_type")
     model = data["model"]
