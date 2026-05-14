@@ -8,3 +8,8 @@ from services.cache_service import (
     save_cache
 )
 
+embedding = OpenAIEmbeddings()
+
+vectorstore = FAISS.load_local(
+    "vectorstore"
+)

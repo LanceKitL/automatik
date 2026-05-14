@@ -7,25 +7,20 @@ pool = pooling.MySQLConnectionPool(
         host="localhost",
         user="root",
         password="",
-        database="automatik"
+        database="automatik" # <- database name || you should match this with your database name
     )
 
 def run_query(query, params=None, fetch=None):
     """
-    The `run_query` function executes a SQL query, fetches results based on the specified fetch
-    parameter, and returns the result.
-    
-    :param query: The `query` parameter is a SQL query string that you want to execute against the
-    database. It can be a SELECT, INSERT, UPDATE, DELETE, or any other valid SQL statement
-    :param params: The `params` parameter in the `run_query` function is used to pass any parameters
-    that need to be bound to the SQL query. These parameters can be used to dynamically insert values
-    into the query to prevent SQL injection attacks and to make the query more flexible and reusable
-    :param fetch: The `fetch` parameter in the `run_query` function determines how the query results are
-    fetched and returned. It can have the following values:
-    :return: The function `run_query` returns the result of the query execution based on the value of
-    the `fetch` parameter. If `fetch` is set to "one", it returns a single row from the query result. If
-    `fetch` is set to "all", it returns all rows from the query result. If `fetch` is not specified or
-    set to any other value, it returns the
+    Executes a given SQL query with optional parameters and fetches results based on the specified fetch type.
+    Args:
+        query (str): The SQL query to be executed.
+        params (tuple, optional): Parameters to be passed to the SQL query. Defaults to None.
+        fetch (str, optional): Determines the type of result to fetch. Can be "one", "all", or None. Defaults to None.
+    Returns:
+        The result of the query execution based on the specified fetch type. If fetch is "one", returns a single record; if "all", returns all records; otherwise, returns the number of affected rows or the last inserted ID for INSERT queries.
+    Raises:
+        Error: If an error occurs during the execution of the SQL query, the error is raised after rolling back any changes made to the database.
     """
     conn = pool.get_connection()
     cursor = conn.cursor(dictionary=True)

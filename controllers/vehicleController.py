@@ -4,7 +4,8 @@ from conn import run_query
 def searchVehicle(params):
     res = run_query("""
                     SELECT * FROM vehicles 
-                    WHERE model LIKE %s OR fuel_type LIKE %s OR year LIKE %s OR CAST(year as CHAR) LIKE %s """, 
+                    WHERE model LIKE %s OR fuel_type LIKE %s OR year LIKE %s OR CAST(year as CHAR) LIKE %s 
+                    """, 
                     (f"%{params}%", f"%{params}%", f"%{params}%", f"%{params}%"), 
                     fetch="all")
     #sample search query: http://localhost:5000/vehicles/search?param=2020
@@ -94,7 +95,8 @@ def updateVehiclePhoto(id):
     res = run_query("""
                     UPDATE vehicle_photos 
                     SET photo_url = %s, sort_order = %s, uploaded_at = %s 
-                    WHERE vehicle_id = %s""",
+                    WHERE vehicle_id = %s
+                    """,
                     (photo_url,sort_order,uploaded_at, id))
     
     if not res: 
