@@ -98,6 +98,7 @@ def forbidden(error):
 @app.errorhandler(500)
 def server_error(error):
     return render_template("error/500.html"), 500
+app.register_blueprint(service_bp, url_prefix="/api")
 
 # ── Health & utility endpoints ───────────────────────────────────────────
 @app.route("/health")
