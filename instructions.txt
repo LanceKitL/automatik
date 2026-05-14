@@ -1,0 +1,8 @@
+-> GETTING STARTED <-
+
+- before you test the program, it is required to run the xampp.
+- make sure you matched the database name according to the "conn.py"
+- install the dependencies indicated on the requirements.txt
+
+
+thats it! happy coding.

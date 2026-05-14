@@ -11,6 +11,18 @@ def logged_in_required(f):
                 "message": "Access Denied"
             }), 403
             
+        # added layer for more security, to ensure the user and role in session are valid
+        user = run_query("""
+                         SELECT * FROM users WHERE user_id = %s AND role = %s
+                         """,
+                         (session["user"], session["role"]),
+                         fetch="one")
+        
+        if not user:
+            return jsonify({
+                "message": "Access Denied"
+            }), 403
+            
         return f(*args, **kwargs)
     return wrapper
     
