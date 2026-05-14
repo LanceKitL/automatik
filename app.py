@@ -13,6 +13,8 @@ from routes.vehicles import vehicles_bp
 from routes.inquiries import inquiry_bp
 from routes.supplier import supplier_bp
 from routes.profile import profile_bp
+from routes.dashboard import dashboard_bp 
+from routes.reports import reports_bp
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
@@ -39,6 +41,8 @@ app.register_blueprint(vehicles_bp, url_prefix="/vehicle")
 app.register_blueprint(inquiry_bp, url_prefix="/inquiry")
 app.register_blueprint(supplier_bp, url_prefix="/supplier")
 app.register_blueprint(profile_bp, url_prefix="/profile")
+app.register_blueprint(dashboard_bp, url_prefix="/dashboard")
+app.register_blueprint(reports_bp, url_prefix="/reports")
 
 @app.route("/health")
 def index():
