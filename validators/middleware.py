@@ -32,7 +32,7 @@ def role_required(*roles):
         def wrapper(*args, **kwargs):
             # add a role guard
             if "role" not in session:
-                return jsonify({"message", "role required."}), 400
+                return jsonify({"message": "role required."}), 400
 
             if session["role"].lower() not in [r.lower() for r in roles]:
                 return jsonify({"message": "Forbidden Access."}), 403
