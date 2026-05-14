@@ -1,7 +1,6 @@
-from flask import Flask, session, jsonify
+from flask import Flask, jsonify
 from datetime import timedelta
 from dotenv import load_dotenv
-from functools import wraps
 from flask_cors import CORS
 import os
 
