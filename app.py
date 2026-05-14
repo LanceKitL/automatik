@@ -13,8 +13,12 @@ from routes.admin import admin_bp
 from routes.auth import auth_bp
 from routes.vehicles import vehicles_bp
 from routes.inquiries import inquiry_bp
+<<<<<<< HEAD
 from routes.supplier import supplier_bp
 from routes.profile import profile_bp
+=======
+from routes.servicebooking import services_bp
+>>>>>>> 04853a9 ( serviceController and servicebooking)
 
 app = Flask(__name__)
 
@@ -42,8 +46,12 @@ app.register_blueprint(admin_bp, url_prefix="/admin")
 app.register_blueprint(auth_bp, url_prefix="/auth")
 app.register_blueprint(vehicles_bp, url_prefix="/vehicle")
 app.register_blueprint(inquiry_bp, url_prefix="/inquiry")
+<<<<<<< HEAD
 app.register_blueprint(supplier_bp, url_prefix="/supplier")
 app.register_blueprint(profile_bp, url_prefix="/profile")
+=======
+app.register_blueprint(services_bp,url_prefix ="/service")
+>>>>>>> 04853a9 ( serviceController and servicebooking)
 
 #404 not found page
 @app.errorhandler(404)
