@@ -4,5 +4,9 @@
 - make sure you matched the database name according to the "conn.py"
 - install the dependencies indicated on the requirements.txt
 
+to install all dependencies you can use this command:
+"pip install -r requirements.txt"
 
 thats it! happy coding.
+
+

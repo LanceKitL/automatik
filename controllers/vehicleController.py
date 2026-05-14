@@ -1,14 +1,51 @@
-from flask import request, jsonify
+from flask import request, jsonify, session
 from conn import run_query
 
+# index
+def getVehicles():
+    res = None
+    if "vehicle" in session:
+        return jsonify({"data": res}), 200
+
+    # save the files on session (cookies) to fetch faster
+    res = run_query("SELECT * FROM vehicles", fetch="all")
+    
+    return jsonify({"data": res}), 200
+
+#show
+def showVehicle(id):
+    car = run_query("SELECT * FROM vehicles WHERE vehicle_id = %s", (id, ), fetch="one")
+    
+    if not car:
+        return jsonify({"message": "no vehicle found."}), 400    
+    
+    return jsonify({"data": car}), 200
+
+def showVehiclePhotos(id):
+    res = run_query("SELECT * FROM vehicle_photos WHERE vehicle_id = %s",(id, ), fetch="all")
+    
+    if not res: 
+        return jsonify({"message": f"vehicle {id} does not exists."}), 400
+
+    return jsonify({"data": res}), 200
+
 def searchVehicle(params):
+    q = f"%{params}%"
+    res = None
+
+
     res = run_query("""
-                    SELECT * FROM vehicles 
-                    WHERE model LIKE %s OR fuel_type LIKE %s OR year LIKE %s OR CAST(year as CHAR) LIKE %s 
+                    SELECT brand,model,year,body_type,seating_capacity,transmission,status,price FROM vehicles 
+                    WHERE 
+                        model LIKE %s
+                        OR brand LIKE %s
+                        OR year LIKE %s
+                        OR body_type LIKE %s
+                        OR transmission LIKE %s
+                        OR STATUS LIKE %s
                     """, 
-                    (f"%{params}%", f"%{params}%", f"%{params}%", f"%{params}%"), 
+                    (q,q,q,q,q,q), 
                     fetch="all")
-    #sample search query: http://localhost:5000/vehicles/search?param=2020
     
     if not res:
         return jsonify({"message": f"vehicle with attribute {params} not found."}), 400
