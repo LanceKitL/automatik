@@ -116,9 +116,9 @@ def update_inquiry(id):
                     (resolved_at, id))
     
     if not res:
-        return jsonify({"message": "action failed."})    
+        return jsonify({"message": "action failed."}), 400    
 
-    return jsonify({"message": "marked as resolved!."})
+    return jsonify({"message": "marked as resolved!."}), 200
 
 # create a handler when the agent successfully assists the customer -> then the resolved_at = current time.
 

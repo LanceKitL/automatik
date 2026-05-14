@@ -41,7 +41,7 @@ def update_user_with(user_id):
     data = request.get_json()
     result = run_query("""
                        UPDATE users 
-                       SET fullName = %s, phone_number = %s, address=%s,city=%s,provice=%s, 
+                       SET fullName = %s, phone_number = %s, address=%s,city=%s,province=%s, 
                        zip_code=%s,date_of_birth=%s,gender=%s,profile_picture_url=%s 
                        WHERE user_id = %s
                        """, 
