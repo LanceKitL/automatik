@@ -157,7 +157,7 @@ def get_agents():
                        agent_details.hire_date 
                        FROM users 
                        INNER JOIN agent_details ON users.user_id = agent_details.user_id
-                       WHERE users.is_active = 1 
+                       WHERE users.role = 'agent'
                        """,
                        fetch="all")
     
@@ -250,6 +250,7 @@ def get_customers():
                          SELECT * FROM customer_details 
                          JOIN users ON customer_details.user_id = users.user_id
                          JOIN user_profile ON customer_details.user_id = user_profile.user_id 
+                         WHERE users.role = 'customer'
                          """,
                          fetch="all")
     
@@ -260,7 +261,7 @@ def get_customer_with(customer_id):
                          SELECT * FROM customer_details 
                          JOIN users ON customer_details.user_id = users.user_id
                          JOIN user_profile ON customer_details.user_id = user_profile.user_id 
-                         WHERE customer_details.user_id = %s
+                         WHERE customer_details.user_id = %s AND users.role = 'customer'
                          """,
                          (customer_id, ),
                          fetch="one")
