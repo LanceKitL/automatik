@@ -115,7 +115,10 @@ def customerAccountHandler():
               (res, f"CUST-{datetime.now().year}-{res}"))
 
     audit = audit_log(
-        session["user"],"POST", "customer", res
+        session["user"],
+        "POST", 
+        "customer", 
+        res
         )
     
     if not res and not audit:
