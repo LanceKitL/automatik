@@ -1,3 +1,4 @@
+from datetime import datetime
 from flask import jsonify, session
 from conn import run_query
 
@@ -12,13 +13,14 @@ from conn import run_query
 # created_at
 
 def fire_notif(user_id: int, title: str, message: str, channel: str, ref_type: str, ref_id: int):
+    created_at = datetime.now()
     res = run_query("""
                     INSERT INTO notifications
-                    (user_id, title, message, channel, ref_tpe, 
+                    (user_id, title, message, channel, ref_type, 
                      ref_id, created_at)
                     VALUES (%s,%s,%s,%s,%s,%s,%s)
                     """,
-                    (user_id, title,message,channel,ref_type,ref_id))
+                    (user_id, title, message, channel, ref_type, ref_id, created_at))
     
     if not res:
         return jsonify({"message": "notification fails to send."}), 400

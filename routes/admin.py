@@ -1,80 +1,71 @@
-from flask import Blueprint,jsonify,request
-from conn import run_query
-from validators.middleware import role_required
+from flask import Blueprint
+from validators.middleware import role_required, logged_in_required
+from controllers.adminController import (
+    get_user,
+    get_user_with,
+    get_user_profile_with,
+    update_user_with,
+    delete_user_with,
+    get_agents,
+    update_commission_rate,
+    get_customers,
+    get_customer_with,
+    update_customer_with
+)
 
 admin_bp = Blueprint('admin', __name__)
 
+#users
 @admin_bp.route('/users')
+@logged_in_required
 @role_required("admin")
-def get_users():
-    result = run_query("SELECT * FROM users", fetch="all")
-    return jsonify({"data": result})
+def index(): return get_user()
 
-@admin_bp.route("/users/<id>")
+@admin_bp.route("/users/<int:user_id>")
+@logged_in_required
 @role_required("admin")
-def get_user_with(id):
-    result = run_query(""" 
-                       SELECT * FROM users 
-                       WHERE user_id = %s 
-                       """, 
-                       (id, ), 
-                       fetch="one")
-    
-    return jsonify({"data": result})
+def show(user_id): return get_user_with(user_id)
 
 @admin_bp.route("/users/<int:user_id>/profile")
+@logged_in_required
 @role_required("admin")
-def get_user_profile_with(user_id):
-    result = run_query(""" 
-                       SELECT * FROM user_profile 
-                       WHERE user_id = %s 
-                       """, 
-                       (user_id, ), 
-                       fetch="one")
-    
-    return jsonify({"data": result})
+def show_profile(user_id): return get_user_profile_with(user_id)
 
 # updating users.
-@admin_bp.route("/users/<int:user_id>/", methods=["PUT"])
+@admin_bp.route("/users/update/<int:user_id>", methods=["PUT"])
+@logged_in_required
 @role_required("admin")
-def update_user_with(user_id):
-    data = request.get_json()
-    result = run_query("""
-                       UPDATE users 
-                       SET fullName = %s, phone_number = %s, address=%s,city=%s,province=%s, 
-                       zip_code=%s,date_of_birth=%s,gender=%s,profile_picture_url=%s 
-                       WHERE user_id = %s
-                       """, 
-                       (data["fullName"], data["phone_number"], data["address"], data["city"], 
-                        data["province"], data["zip_code"], data["date_of_birth"], data["gender"], 
-                        data["profile_picture_url"], user_id))
-    
-    return jsonify({"data": result})
+def update_user(user_id): return update_user_with(user_id)
 
+@admin_bp.route("/users/<int:user_id>/delete", methods=["DELETE"])
+@logged_in_required
+@role_required("admin")
+def delete_user(user_id): return delete_user_with(user_id)
+
+# agents
 @admin_bp.route("/agents")
+@logged_in_required
 @role_required("admin")
-def get_agents():
-    result = run_query(""" 
-                       SELECT users.username, users.role, agent_details.employee_number, 
-                       agent_details.hire_date 
-                       FROM users 
-                       INNER JOIN agent_details ON users.user_id = agent_details.user_id 
-                       """,
-                       fetch="all")
-    
-    return jsonify({"data": result})
+def index_agents(): return get_agents()
 
-@admin_bp.route("/customers")
+@admin_bp.route("/agent/update/<int:agent_id>", methods=["PUT"])
+@logged_in_required
 @role_required("admin")
-def get_customers():
-    result = run_query("""
-                       SELECT users.username, users.role, users.email, customer_details.
-                       customer_number, customer_details.notes, customer_details.preferred_payment_method, 
-                       customer_details.preferred_contact_method 
-                       FROM users 
-                       INNER JOIN customer_details ON users.user_id = customer_details.user_id 
-                       """,
-                       fetch="all")
-    
-    return jsonify({"data": result})
+def update_agent(agent_id): return update_commission_rate(agent_id)
 
+
+# customer
+@admin_bp.route("/customer")
+@logged_in_required
+@role_required("admin")
+def index_customers(): return get_customers()
+
+@admin_bp.route("/customer/<int:customer_id>")
+@logged_in_required
+@role_required("admin")
+def show_customer(customer_id): return get_customer_with(customer_id)
+
+@admin_bp.route("/customer/<int:customer_id>/update", methods=["PUT"])
+@logged_in_required
+@role_required("admin")
+def update_customer(customer_id): return update_customer_with(customer_id)

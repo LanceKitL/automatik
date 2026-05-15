@@ -1,13 +1,14 @@
+import os
 from mysql.connector import pooling, Error
 from flask import jsonify
 # creating a connection
 pool = pooling.MySQLConnectionPool(
-        pool_name="mypool",
-        pool_size=5,
-        host="localhost",
-        user="root",
-        password="",
-        database="automatik" # <- database name || you should match this with your database name
+    pool_name="mypool",
+    pool_size=5,
+    host=os.getenv("DB_HOST", "localhost"),
+    user=os.getenv("DB_USER", "root"),
+    password=os.getenv("DB_PASSWORD", ""),
+    database=os.getenv("DB_NAME", "automatik")
     )
 
 def run_query(query, params=None, fetch=None):

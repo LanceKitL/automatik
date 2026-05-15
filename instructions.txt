@@ -7,6 +7,14 @@
 to install all dependencies you can use this command:
 "pip install -r requirements.txt"
 
+
+to get the latest update on your current branch do this:
+- git checkout main 
+- git pull
+- git checkout <branchName>
+- git fetch origin
+- git rebase origin/main
+
 thats it! happy coding.
 
 

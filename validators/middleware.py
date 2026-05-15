@@ -8,7 +8,7 @@ def logged_in_required(f):
         
         if "user" not in session or "role" not in session:
             return jsonify({
-                "message": "Access Denied"
+                "message": "You are not logged in."
             }), 403
             
         # added layer for more security, to ensure the user and role in session are valid
@@ -32,7 +32,7 @@ def role_required(*roles):
         def wrapper(*args, **kwargs):
             # add a role guard
             if "role" not in session:
-                return jsonify({"message": "role required."}), 400
+                return jsonify({"message": "forbidden access."}), 403
 
             if session["role"].lower() not in [r.lower() for r in roles]:
                 return jsonify({"message": "Forbidden Access."}), 403

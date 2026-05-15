@@ -49,5 +49,7 @@ def update_vehicle_photo(id): return updateVehiclePhoto(id)
 @vehicles_bp.route("/search")
 def search():
     value = request.args.get("param")
+    if not value:
+        return {"message": "param query is required."}, 400
     return searchVehicle(value)
     
