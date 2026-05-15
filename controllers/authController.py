@@ -1,7 +1,10 @@
 from werkzeug.security import check_password_hash, generate_password_hash
+from utils.token_helper import EmailVerificationToken
+from services.mail_service import send_email_verification
 from flask import session, jsonify, request
+from datetime import datetime, timezone
+import hashlib
 from utils.log import audit_log
-from datetime import datetime
 from conn import run_query
 import random
 import string
@@ -185,10 +188,18 @@ def AgentAccountHandler():
               INSERT INTO agent_details (user_id, employee_number) VALUES (%s,%s)
               """,
               (result, f"EMP-{datetime.now().year}-{result}"))
+    
+    token = EmailVerificationToken(result)
+
+    if not token:
+        return jsonify({"message": "Token generation failed."}), 400
+
+    
+    link = f"http://127.0.0.1:5000/auth/verify?token_id={token["token_id"]}&token={token["token_hash"]}"
+    send_email_verification(email,full_name.split(" ")[0], link)
+
 
     return jsonify({"message": "Agent Account Created Successfully!"}), 200
-
-
 
 def changePassword():
     """
@@ -252,38 +263,43 @@ def logoutHandler():
     return jsonify({"message": "Logged out success."}), 200
 
 def verifyEmail():
-    data = request.get_json(silent=True) or {}
-    email = data.get("email")
-    username = data.get("username")
-    password = data.get("password")
+    token_id = request.args.get("token_id")
+    raw_token = request.args.get("token")
 
-    if not password or (not email and not username):
-        return jsonify({"message": "email or username and password are required."}), 400
+    response = run_query("""
+                         SELECT * FROM access_token WHERE token_id = %s AND token_type = 'email_verify'
+                         """,
+                         (token_id,),
+                         fetch="one")
+    if response is None:
+        return jsonify({"message": "Invalid Token."}), 400
+    
+    # expiry check
+    now = datetime.now(timezone.utc)
+    if response["expires_at"].replace(tzinfo=timezone.utc) < now:
+        return jsonify({"message": "Token Expired."}), 400
+    
+    if response["used_at"] is not None:
+        return jsonify({"message": "Token already used."}), 400
+    
+    #hash 
+    incoming_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    if incoming_hash != response["token_hash"]:
+        return jsonify({"message": "Invalid token."}), 400
 
-    user = run_query(
-        """
-        SELECT * FROM users
-        WHERE email = %s OR username = %s
-        """,
-        (email, username),
-        fetch="one"
-    )
-
-    if not user:
-        return jsonify({"message": "user not found."}), 404
-
-    if not check_password_hash(user["hashed_password"], password):
-        return jsonify({"message": "invalid credentials."}), 403
-
-    if user.get("email_verified") == 1:
-        return jsonify({"message": "email already verified."}), 200
-
-    run_query(
-        """
-        UPDATE users SET email_verified = %s
-        WHERE user_id = %s
-        """,
-        (1, user["user_id"])
-    )
+    # update the token
+    run_query("""
+              UPDATE access_token
+              SET used_at = %s
+              WHERE token_id =%s
+              """,
+              (now, token_id))
+    
+    run_query("""
+            UPDATE users
+            SET email_verified = 1
+            WHERE user_id =%s
+            """,
+            (response["user_id"],))
 
     return jsonify({"message": "verification successful!"}), 200
