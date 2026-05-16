@@ -3,7 +3,6 @@ from conn import run_query
 from dateutil.relativedelta import relativedelta
 
 
-
 # ADMIN
 
 def getAllLoans():
@@ -111,6 +110,28 @@ def getLoanSchedule(loan_id):
     return jsonify({"data": schedule}), 200
 
 
+def getMyLoan(customer_id):
+    loan = run_query("""
+        SELECT loan_details.*
+        FROM loan_details
+        JOIN sales ON loan_details.sale_id = sales.sale_id
+        WHERE sales.customer_id = %s
+        ORDER BY loan_details.loan_id DESC
+    """, (customer_id,), fetch="one")
+
+    if not loan:
+        return jsonify({"message": "No loan found!"}), 404
+
+    schedule = run_query("""
+        SELECT amortization_schedule.*
+        FROM amortization_schedule
+        WHERE amortization_schedule.loan_id = %s
+        ORDER BY amortization_schedule.due_date ASC
+    """, (loan["loan_id"],), fetch="all")
+
+    return jsonify({"loan": loan, "schedule": schedule}), 200
+
+
 def updateScheduleStatus(schedule_id):
     data = request.get_json(silent=True) or {}
     status = data.get("status")
@@ -193,28 +214,3 @@ def computeAmortization(loan_id):
         """, (loan_id, n, due_date, principal, interest, monthly_amortization, running_balance, status))
 
     return jsonify({"message": "Amortization recomputed successfully!"}), 200
-
-
-
-# CUSTOMER
-
-def getMyLoan(customer_id):
-    loan = run_query("""
-        SELECT loan_details.*
-        FROM loan_details
-        JOIN sales ON loan_details.sale_id = sales.sale_id
-        WHERE sales.customer_id = %s
-        ORDER BY loan_details.loan_id DESC
-    """, (customer_id,), fetch="one")
-
-    if not loan:
-        return jsonify({"message": "No loan found!"}), 404
-
-    schedule = run_query("""
-        SELECT amortization_schedule.*
-        FROM amortization_schedule
-        WHERE amortization_schedule.loan_id = %s
-        ORDER BY amortization_schedule.due_date ASC
-    """, (loan["loan_id"],), fetch="all")
-
-    return jsonify({"loan": loan, "schedule": schedule}), 200

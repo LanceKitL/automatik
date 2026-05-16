@@ -28,11 +28,7 @@ def getAllDocuments():
         return jsonify({"message": "No documents found!"}), 404
 
     return jsonify({"data": documents}), 200
- 
-    if not documents:
-        return jsonify({"message": "No documents found!"}), 404
- 
-    return jsonify({"data": documents}), 200
+
 
 def getDocumentById(document_id):
     document = run_query("""
@@ -101,3 +97,18 @@ def getMyDocuments(customer_id):
         return jsonify({"message": "No documents found!"}), 404
 
     return jsonify({"data": documents}), 200
+
+
+def getMyDocumentById(document_id, customer_id):
+    document = run_query("""
+        SELECT doc.document_id, doc.sale_id, doc.document_type, doc.file_url, doc.is_accessible, doc.created_at,
+               s.selling_price, s.payment_type, s.status, s.sale_date
+        FROM documents doc
+        JOIN sales s ON doc.sale_id = s.sale_id
+        WHERE doc.document_id = %s AND s.customer_id = %s AND doc.is_accessible = 1
+    """, (document_id, customer_id), fetch="one")
+
+    if not document:
+        return jsonify({"message": "Document not found or not accessible!"}), 404
+
+    return jsonify({"data": document}), 200
