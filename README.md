@@ -79,8 +79,3 @@ npm run dev
 Backend runs at `http://localhost:5000`
 Frontend runs at `http://localhost:5173`
 
-| Role | Email | Password |
-|---|---|---|
-| Admin | admin@automatik.local | `admin1234` |
-| Agent | agent@automatik.local | `agent1234` |
-| Customer | customer@automatik.local | `customer1234` |
