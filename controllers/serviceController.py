@@ -1,70 +1,111 @@
 from flask import session, jsonify, request
 from utils.log import audit_log
+from datetime import datetime
 from conn import run_query
 
+# --- SERVICE BOOKINGS & SLOTS ---
 
-def listServiceSlotsHandler(): #test
-    slots = run_query("SELECT * FROM service_slots WHERE is_available = 1", fetch="all")
-    return jsonify({"data": slots}), 200
-
-def createServiceSlotHandler():
-    data = request.get_json()
-    query = "INSERT INTO service_slots (slot_date, slot_time, is_available) VALUES (%s, %s, %s)"
-    params = (data['slot_date'], data['slot_time'], 1)
-    res = run_query(query, params)
+def listServiceSlotsHandler():
+    slots = run_query("""
+                      SELECT * FROM service_slots 
+                      WHERE is_available = %s
+                      """, 
+                      (1,), 
+                      fetch="all")
     
-    audit_log(session["user"], "Created new service slot", "service_slots")
-    return jsonify({"message": "Service slot created successfully!", "id": res}), 201
-
-def listMyBookingsHandler():
-    user_id = session["user"]
-    bookings = run_query("SELECT * FROM service_bookings WHERE user_id = %s", (user_id,), fetch="all")
-    return jsonify({"data": bookings}), 200
+    return jsonify({"data": slots}), 200
 
 def createBookingHandler():
     data = request.get_json()
     user_id = session["user"]
+    slot_id = data.get("slot_id")
+    vehicle_id = data.get("vehicle_id")
+    warranty_claim_id = data.get("warranty_claim_id")
     
-    # Insert sa service_bookings table
-    query = """
-        INSERT INTO service_bookings (user_id, slot_id, booking_type, status) 
-        VALUES (%s, %s, %s, %s)
-    """
-    params = (user_id, data['slot_id'], data['type'], 'pending')
-    booking_id = run_query(query, params)
-    
-    run_query("UPDATE service_slots SET is_available = 0 WHERE slot_id = %s", (data['slot_id'],))
-    
-    audit_log(user_id, f"Booked service/test drive (ID: {booking_id})", "service_bookings")
-    return jsonify({"message": "Booking successful!", "booking_id": booking_id}), 201
+    if not slot_id or not vehicle_id:
+        return jsonify({"message": "slot and vehicle information is required."}), 400
 
-def updateBookingStatusHandler(booking_id):
-    data = request.get_json()
-    status = data.get("status") # e.g., 'confirmed', 'completed', 'cancelled'
+    slot = run_query("""
+                     SELECT capacity, is_available FROM service_slots 
+                     WHERE slot_id = %s AND is_available = %s
+                     """, 
+                     (slot_id, 1), 
+                     fetch="one")
     
-    run_query("UPDATE service_bookings SET status = %s WHERE booking_id = %s", (status, booking_id))
-    
-    audit_log(session["user"], f"Updated booking {booking_id} status to {status}", "service_bookings")
-    return jsonify({"message": "Booking status updated!"}), 200
+    if not slot:
+        return jsonify({"message": "Slot is unavailable."}), 400
 
-def listWarrantyClaimsHandler():
-    # Admin view para makita lahat, o user view para sa sariling claims
-    if session["role"] == "admin":
-        claims = run_query("SELECT * FROM warranty_claims", fetch="all")
-    else:
-        claims = run_query("SELECT * FROM warranty_claims WHERE user_id = %s", (session["user"],), fetch="all")
-    return jsonify({"data": claims}), 200
+    count_res = run_query("""
+                          SELECT COUNT(*) as total FROM service_bookings 
+                          WHERE slot_id = %s AND status != %s
+                          """, 
+                          (slot_id, 'cancelled'), 
+                          fetch="one")
+    
+    current_bookings = count_res["total"]
+
+    if current_bookings >= slot["capacity"]:
+        return jsonify({"message": "Booking failed. Slot has reached its capacity."}), 400
+
+    res = run_query("""
+                    INSERT INTO service_bookings 
+                    (customer_id, slot_id, vehicle_id, status, warranty_claim_id) 
+                    VALUES (%s, %s, %s, %s, %s)
+                    """, 
+                    (user_id, slot_id, vehicle_id, 'pending', warranty_claim_id))
+
+    if (current_bookings + 1) >= slot["capacity"]:
+        run_query("""
+                  UPDATE service_slots SET is_available = %s 
+                  WHERE slot_id = %s
+                  """, 
+                  (0, slot_id))
+
+    audit_log(session["user"], "Created Service Booking", "service_bookings")
+    
+    return jsonify({"message": "Booking created successfully!", "booking_id": res}), 201
+
+# --- WARRANTY CLAIMS ---
 
 def submitWarrantyClaimHandler():
     data = request.get_json()
     user_id = session["user"]
+    vehicle_id = data.get("vehicle_id")
+    description = data.get("description")
+
+    if not vehicle_id or not description:
+        return jsonify({"message": "vehicle and description are required."}), 400
+
+    claim_id = run_query("""
+                         INSERT INTO warranty_claims 
+                         (customer_id, vehicle_id, description, status) 
+                         VALUES (%s, %s, %s, %s)
+                         """, 
+                         (user_id, vehicle_id, description, 'submitted'))
+
+    audit_log(session["user"], "Submitted Warranty Claim", "warranty_claims")
     
-    query = """
-        INSERT INTO warranty_claims (user_id, vehicle_id, description, status) 
-        VALUES (%s, %s, %s, 'pending')
-    """
-    params = (user_id, data['vehicle_id'], data['description'])
-    claim_id = run_query(query, params)
+    return jsonify({"message": "Submitted successfully!", "claim_id": claim_id}), 201
+
+def updateWarrantyStatusHandler(claim_id):
+    data = request.get_json()
+    new_status = data.get("status")
+    resolution = data.get("resolution_text")
     
-    audit_log(user_id, "Submitted warranty claim", "warranty_claims")
-    return jsonify({"message": "Warranty claim submitted successfully!", "claim_id": claim_id}), 201
+    if not new_status:
+        return jsonify({"message": "status is required."}), 400
+
+    # Reject logic: add resolution text (Requirement from PDF)
+    if new_status == 'rejected' and not resolution:
+        return jsonify({"message": "Resolution note is required when rejecting a claim."}), 400
+
+    run_query("""
+              UPDATE warranty_claims 
+              SET status = %s, resolution_text = %s 
+              WHERE claim_id = %s
+              """, 
+              (new_status, resolution, claim_id))
+
+    audit_log(session["user"], f"Updated Warranty Status to {new_status}", "warranty_claims")
+    
+    return jsonify({"message": f"Claim status updated to {new_status}."}), 200
