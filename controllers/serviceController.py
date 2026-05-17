@@ -3,7 +3,7 @@ from utils.log import audit_log
 from conn import run_query
 
 
-def listServiceSlotsHandler():
+def listServiceSlotsHandler(): #test
     slots = run_query("SELECT * FROM service_slots WHERE is_available = 1", fetch="all")
     return jsonify({"data": slots}), 200
 
