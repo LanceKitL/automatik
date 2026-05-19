@@ -26,6 +26,22 @@ git clone https://github.com/LanceKitL/automatik.git
 cd automatik
 ```
 
+to install the following dependencies use follow these steps:
+
+create your python virtual environment
+
+### for windows
+`python -m venv .venv`
+`.venv/bin/activate.bat`
+
+### for linux/mac
+`python3 -m venv .venv`
+`source .venv/bin/activate`
+
+you should see a (.venv) on your terminal, then install the ff. dependencies.
+
+`pip3 install -r requirements.txt`
+
 ### 2. Database
 
 ```bash
