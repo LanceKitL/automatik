@@ -22,7 +22,7 @@ AutoMatik is a full-stack web application for car dealership management. It serv
 ### 1. Clone
 
 ```bash
-git clone https://github.com/<org>/automatik.git
+git clone https://github.com/LanceKitL/automatik.git
 cd automatik
 ```
 
@@ -78,4 +78,6 @@ npm run dev
 
 Backend runs at `http://localhost:5000`
 Frontend runs at `http://localhost:5173`
+
+`frontend is under development`
 
