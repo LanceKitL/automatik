@@ -21,12 +21,12 @@ def send_email_verification(user_email, name, verify_url):
 
     mail.send(msg)
 
-def send_verified(user_email, name):
+def welcome_user(user_email, name):
     msg = Message(
         subject="Email Verified Successfully!",
         recipients=[user_email]
     )
-
+    
     msg.html = render_template(
         'email/welcome.html',
         name=name
