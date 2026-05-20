@@ -56,54 +56,62 @@ def searchVehicle(params):
     conditions = []
     values = []
 
+    # Brand
     if params.get("brand"):
         conditions.append("v.brand LIKE %s")
         values.append(f"%{params['brand']}%")
 
+    # Model
     if params.get("model"):
         conditions.append("v.model LIKE %s")
         values.append(f"%{params['model']}%")
 
+    # Fuel Type
     if params.get("fuel_type"):
         conditions.append("v.fuel_type LIKE %s")
         values.append(f"%{params['fuel_type']}%")
 
+    # Status
     if params.get("status"):
         conditions.append("v.status LIKE %s")
         values.append(f"%{params['status']}%")
 
+    # Minimum Price
     if params.get("price_min"):
-        conditions.append("v.price_min >= %s")
-        values.append(f"%{params['price_min']}%")
+        conditions.append("v.price >= %s")
+        values.append(params["price_min"])
 
+    # Maximum Price
     if params.get("price_max"):
-        conditions.append("v.price_max <= %s")
-        values.append(f"%{params['price_max']}%")
+        conditions.append("v.price <= %s")
+        values.append(params["price_max"])
 
-    where_clause = []
-
+    # Build WHERE clause
+    where_clause = ""
     if conditions:
         where_clause = "WHERE " + " AND ".join(conditions)
 
     query = f"""
-    SELECT v.*, p.photo_url
-    FROM vehicles v
-    LEFT JOIN vehicle_photos p
-        ON p.vehicle_id = (
-            SELECT vehicle_id
-            FROM vehicle_photos
-            WHERE vehicle_id = v.vehicle_id
-            ORDER BY vehicle_id ASC
-            LIMIT 1
-        )
-    {where_clause}
+        SELECT 
+            v.*,
+            p.photo_url
+        FROM vehicles v
+        LEFT JOIN vehicle_photos p
+            ON p.photo_id = (
+                SELECT vp.photo_id
+                FROM vehicle_photos vp
+                WHERE vp.vehicle_id = v.vehicle_id
+                ORDER BY vp.photo_id ASC
+                LIMIT 1
+            )
+        {where_clause}
     """
 
     res = run_query(query, tuple(values), fetch="all")
 
     if not res:
         return jsonify({"message": "No vehicles found."}), 404
-    
+
     return jsonify(res), 200
 
 def showVehicle(id):
@@ -264,17 +272,17 @@ def updateStatus(vehicle_id):
     """
     options = ['available','reserved','discontinued','delivered']
 
-    data = request.get_json()
+    data = request.get_json(silent=True) or {} # if body not a valid JSON return None instead of raising Error
     status = data.get("status")
 
-    if status not in options:
+    if status is None: # check first if the status is empty.
+        return jsonify({"message": "no fields to update."}), 400
+    
+    if status not in options: # check if the status is valid
         return jsonify({
             "message": "status not found, please use these options.",
             "options": options
             }), 400
-
-    if status is None:
-        return jsonify({"message": "no fields to update."}), 400
 
     run_query("""
               UPDATE vehicles 
@@ -325,7 +333,7 @@ def addPhoto():
     params = []
 
     for field_name, value in fields.items():
-        if not field_name:
+        if not value:
             return jsonify({"message": f"{field_name} is required."}), 400
         
         params.append(value)
@@ -363,27 +371,47 @@ def removePhoto(photo_id):
         return jsonify({"message": "Image not found."}), 404
 
     # delete photo
-    res = run_query("""
-                    DELETE FROM vehicle_photos 
-                    WHERE vehicle_id = %s
-                    """,
-                    (photo_id,))
-    
+    run_query("""
+        DELETE FROM vehicle_photos 
+        WHERE photo_id = %s
+        """,
+        (photo_id,))
+
     return jsonify({"message": f"vehicle photo {photo_id} deleted successfully!"}), 200
 
 def indexLowStocks(threshold):
-    print("hello")
-    res = run_query("""
-                    SELECT brand, model, COUNT(*) as available_count
-                    FROM vehicles
-                    WHERE status = 'available'
-                    GROUP BY brand,model
-                    HAVING COUNT(*) < %s
-                    """,
-                    (threshold,),
-                    fetch="all")
-    
-    return jsonify({
-        "message": "success",
-        "data": res
+    if threshold is None:
+        return jsonify({
+            "message": "Please define the threshold parameter."
+        }), 400
+
+    try:
+        threshold = int(threshold)
+
+        res = run_query(
+            """
+            SELECT brand, model, COUNT(*) AS available_count
+            FROM vehicles
+            WHERE status = 'available'
+            GROUP BY brand, model
+            HAVING COUNT(*) < %s
+            """,
+            (threshold,),
+            fetch="all"
+        )
+
+        return jsonify({
+            "message": "success",
+            "data": res
         }), 200
+
+    except ValueError:
+        return jsonify({
+            "message": "Threshold must be a valid integer."
+        }), 400
+
+    except Exception as e:
+        return jsonify({
+            "message": "Internal server error.",
+            "error": str(e)
+        }), 500

@@ -58,12 +58,12 @@ def delete_vehicle(id): return deleteVehicleHandler(id)
 @role_required("admin")
 def createPhoto(): return addPhoto()
 
-@vehicles_bp.route("/delete/<int:photo_id>/photo", methods=["DELETE"])
+@vehicles_bp.route("/delete/photo/<int:photo_id>", methods=["DELETE"])
 @logged_in_required
 @role_required("admin")
 def deletePhoto(photo_id): return removePhoto(photo_id)
 
-@vehicles_bp.route("/update/<int:vehicle_id>/status", methods=["PUT"])
+@vehicles_bp.route("/update/status/<int:vehicle_id>", methods=["PUT"])
 @logged_in_required
 @role_required("admin")
 def changeStatus(vehicle_id):return updateStatus(vehicle_id)

@@ -11,7 +11,13 @@ pool = pooling.MySQLConnectionPool(
     database=os.getenv("DB_NAME", "automatik")
     )
 
-def run_query(query, params=None, fetch=None):
+def get_db():
+    conn = pool.get_connection()
+    cursor = conn.cursor(dictionary=True)
+    return conn,cursor
+
+
+def run_query(query, params=None, fetch=None, conn=None, cursor=None):
     """
     Executes a given SQL query with optional parameters and fetches results based on the specified fetch type.
     Args:
@@ -23,8 +29,14 @@ def run_query(query, params=None, fetch=None):
     Raises:
         Error: If an error occurs during the execution of the SQL query, the error is raised after rolling back any changes made to the database.
     """
-    conn = pool.get_connection()
-    cursor = conn.cursor(dictionary=True)
+    external_conn = conn is not None
+    external_cursor = cursor is not None
+
+    if not conn:
+        conn = pool.get_connection()
+
+    if not cursor:
+        cursor = conn.cursor(dictionary=True)
     
     try:
         cursor.execute(query, params)
@@ -35,7 +47,8 @@ def run_query(query, params=None, fetch=None):
         elif fetch == "all":
             result = cursor.fetchall()
         else:
-            conn.commit()
+            if not external_conn:
+                conn.commit()
             
             if query.strip().upper().startswith("INSERT"):
                 result = cursor.lastrowid
@@ -44,8 +57,13 @@ def run_query(query, params=None, fetch=None):
 
         return result
     except Error as e:
-        conn.rollback()
+        if not external_conn:
+            conn.rollback()
+
         raise e
     finally:        
-        cursor.close()
-        conn.close()
+        if not external_cursor:
+            cursor.close()
+        if not external_conn:
+            conn.close()
+        
