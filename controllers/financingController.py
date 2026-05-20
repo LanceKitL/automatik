@@ -153,3 +153,53 @@ def getOverdueSchedules():
         return jsonify({"message": "No overdue schedules found!"}), 404
 
     return jsonify({"data": overdue}), 200
+
+
+def computeAmortization(loan_id):
+
+    data = request.get_json(silent=True) or {}
+    interest_rate = data.get("interest_rate")
+    term_months = data.get("term_months")
+
+    if not interest_rate or not term_months:
+        return jsonify({"message": "interest_rate and term_months are required."}), 400
+
+    loan = run_query("""
+        SELECT ld.*, s.created_at as sale_date
+        FROM loan_details ld
+        JOIN sales s ON ld.sale_id = s.sale_id
+        WHERE ld.loan_id = %s
+    """, (loan_id,), fetch="one")
+
+    if not loan:
+        return jsonify({"message": "Loan not found!"}), 404
+
+    monthly_rate = interest_rate / 100 / 12
+    monthly_amortization = loan["loan_amount"] * monthly_rate / (1 - (1 + monthly_rate) ** -term_months)
+
+    run_query("""
+        UPDATE loan_details SET interest_rate=%s, term_months=%s, monthly_amortization=%s
+        WHERE loan_id = %s
+    """, (interest_rate, term_months, monthly_amortization, loan_id))
+
+    run_query("""
+        DELETE FROM amortization_schedule 
+        WHERE loan_id = %s AND status = 'unpaid'
+    """, (loan_id,))
+
+    sale_date = loan["sale_date"]
+    running_balance = loan["loan_amount"]
+    for n in range(1, term_months + 1):
+        interest = running_balance * monthly_rate
+        principal = monthly_amortization - interest
+        running_balance -= principal
+        due_date = sale_date + relativedelta(months=n)
+        status = "unpaid"
+
+        run_query("""
+            INSERT INTO amortization_schedule 
+            (loan_id, month_number, due_date, principal, interest, total_due, running_balance, status) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (loan_id, n, due_date, principal, interest, monthly_amortization, running_balance, status))
+
+    return jsonify({"message": "Amortization recomputed successfully!"}), 200
