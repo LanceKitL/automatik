@@ -168,6 +168,7 @@ def update_commission_rate(agent_id):
     [ADMIN ONLY]
     Update hire_date and/or commission rate of an agent.
     """
+    # UPDATE -> old_value | new_value
 
     # Check if agent exists
     existing = run_query(
@@ -175,11 +176,11 @@ def update_commission_rate(agent_id):
         (agent_id,),
         fetch="one"
     )
-
-    if not existing:
+    
+    if existing is None:
         return jsonify({
-            "message": f"agent with id [{agent_id}] does not exist."
-        }), 400
+            "message": f"agent with id [{agent_id}] not found."
+        }), 404
 
     data = request.get_json()
 
@@ -195,7 +196,7 @@ def update_commission_rate(agent_id):
     params = []
     # Save old values
     old_value = {
-        "hire_date": existing.get("hire_date"),
+        "hire_date": existing.get("hire_date"), #or existing["hire_date"]
         "default_commission_rate": existing.get("default_commission_rate")
     }
 

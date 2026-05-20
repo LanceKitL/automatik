@@ -1,10 +1,12 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask, jsonify
 from datetime import timedelta
-from dotenv import load_dotenv
 from flask_cors import CORS
+from config import MailConfig
+from services.mail_service import init_mail
 import os
-
-load_dotenv()
 
 #routes
 from routes.admin import admin_bp
@@ -15,8 +17,8 @@ from routes.supplier import supplier_bp
 from routes.profile import profile_bp
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
 
+CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 debug = os.getenv("FLASK_DEBUG", "0") == "1"
@@ -26,11 +28,14 @@ app.config["SESSION_COOKIE_SECURE"] = os.getenv(
 ) == "1"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
 app.config["SESSION_REFRESH_EACH_REQUEST"] = True
-
 session_secret = os.getenv("SESSION_SECRET")
 if not session_secret:
     raise RuntimeError("SESSION_SECRET is required.")
+
 app.secret_key = session_secret
+
+app.config.from_object(MailConfig)
+init_mail(app)
 
 #routes
 app.register_blueprint(admin_bp, url_prefix="/admin")
