@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from conn import run_query
 import hashlib, secrets
 
-def EmailVerificationToken(user_id):
+def EmailVerificationToken(user_id,conn,cursor):
     raw_token = secrets.token_urlsafe(32) # attached to link
     token_hash = hashlib.sha256(raw_token.encode()).hexdigest() # store in db
     token_id = secrets.token_hex(16) # attached to link
@@ -20,9 +20,11 @@ def EmailVerificationToken(user_id):
              user_id,
              token_hash,
              'email_verify',
-             expires_at))
+             expires_at),
+             conn=conn,
+             cursor=cursor)
     
-    if response:
+    if response is None:
         return False
 
     return {

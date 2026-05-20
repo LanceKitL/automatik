@@ -1,11 +1,10 @@
 from werkzeug.security import check_password_hash, generate_password_hash
 from utils.token_helper import EmailVerificationToken
-from services.mail_service import send_email_verification, welcome_user
+from services.mail_service import send_email_verification
 from flask import session, jsonify, request, render_template
 from datetime import datetime, timezone
 from utils.log import audit_log
-import json
-from conn import run_query
+from conn import run_query, get_db, Error
 import hashlib
 import random
 import string
@@ -163,100 +162,123 @@ def customerAccountHandler():
     }), 200
 
 def AgentAccountHandler():
-    data = request.get_json()
+    conn,cursor = get_db()
 
-    # fields
-    full_name = data.get("full_name") # -> user_profile table    
-    username = data.get("username")    
-    email = data.get("email")
-    password = data.get("password")
-    confirmPassword = data.get("confirmPassword")
+    try:
+        data = request.get_json()
+        
+        # fields
+        full_name = data.get("full_name") # -> user_profile table    
+        username = data.get("username")    
+        email = data.get("email")
+        password = data.get("password")
+        confirmPassword = data.get("confirmPassword")
 
-    fields = {
-        "full_name": full_name,
-        "username": username,
-        "email": email,
-        "password": password,
-        "confirmPassword": confirmPassword 
-        }
+        fields = {
+            "full_name": full_name,
+            "username": username,
+            "email": email,
+            "password": password,
+            "confirmPassword": confirmPassword 
+            }
 
-    for field, value in fields.items():
-        if not value:
-            return jsonify({"message": f"{field} is required."}), 400
-    # check if matched
-    if data["password"] != data["confirmPassword"]:
-        return jsonify({"message": "password does not match."}), 400
-    
-    # check for duplicate entry!
-    is_existing = run_query("""
-                            SELECT user_id FROM users 
-                            WHERE username = %s 
-                            OR email = %s 
-                            """,
-                            (username, email),
-                            fetch="one")
-    
-    # check if is_existing = True
-    if is_existing:
-        return jsonify({"message": "username or email already exists."}), 400
-    
-    # generate the hashed password
-    hashedPassword = generate_password_hash(data["password"])
+        for field, value in fields.items():
+            if not value:
+                return jsonify({"message": f"{field} is required."}), 400
+        # check if matched
+        if data["password"] != data["confirmPassword"]:
+            return jsonify({"message": "password does not match."}), 400
+        
+        # check for duplicate entry!
+        is_existing = run_query("""
+                                SELECT user_id FROM users 
+                                WHERE username = %s 
+                                OR email = %s 
+                                """,
+                                (username, email),
+                                fetch="one",
+                                conn=conn,
+                                cursor=cursor)
+        
+        # check if is_existing = True
+        if is_existing:
+            return jsonify({"message": "username or email already exists."}), 400
+        # generate the hashed password
+        hashedPassword = generate_password_hash(data["password"])
 
-    result = run_query(""" 
-                       INSERT INTO users 
-                       (username,email,hashed_password, role, email_verified) 
-                       VALUES (%s,%s,%s,%s,%s)
-                       """, 
-                       (data["username"], data["email"], hashedPassword, 'agent', 0))
+        result = run_query(""" 
+                        INSERT INTO users 
+                        (username,email,hashed_password, role, email_verified) 
+                        VALUES (%s,%s,%s,%s,%s)
+                        """, 
+                        (data["username"], 
+                         data["email"], 
+                         hashedPassword, 
+                         'agent', 
+                         0),
+                         conn=conn,
+                         cursor=cursor)
 
-    if not result:
-        return jsonify({"message": "Agent Account Creation Failed."}), 500
+        if not result:
+            return jsonify({"message": "Agent Account Creation Failed."}), 500
 
-    # for user_profile -> full name is the only not nullable
-    run_query("""
-              INSERT INTO user_profile (user_id, full_name) VALUES (%s,%s) 
-              """,
-              (result, full_name))
+        # for user_profile -> full name is the only not nullable
+        run_query("""
+                INSERT INTO user_profile (user_id, full_name) VALUES (%s,%s) 
+                """,
+                (result, 
+                 full_name,
+                 ),
+                 conn=conn,
+                 cursor=cursor)
 
-    # create agent details too T-T
-    agent = run_query("""
-              INSERT INTO agent_details (user_id, employee_number) VALUES (%s,%s)
-              """,
-              (result, f"EMP-{datetime.now().year}-{result}"))
-    
-    token = EmailVerificationToken(result)
+        # create agent details too T-T
+        run_query("""
+                INSERT INTO agent_details (user_id, employee_number) VALUES (%s,%s)
+                """,
+                (result, f"EMP-{datetime.now().year}-{result}"),
+                conn=conn,
+                cursor=cursor)
+        
+        token = EmailVerificationToken(result,conn=conn,cursor=cursor)
 
-    if not token:
-        return jsonify({"message": "Token generation failed."}), 400
+        if not token:
+            return jsonify({"message": "Token generation failed."}), 400
 
-    # prepare the link dedicated for 'verifyEmail' function
-    link = f"""
-    http://192.168.1.46:5000/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}
-    """
-    #print("token_id", token["token_id"]) # ENDPOINT TESTING
-    #print("raw_token", token["raw_token"]) # for endpoint testing || delete this before pushing
-    send_email_verification(email,full_name.split(" ")[0], link)
+        # if everything is success
+        conn.commit()
 
-    # get the current user_id
-    user_agent = run_query("""
-                           SELECT user_id FROM users 
-                           WHERE email = %s""", 
-                           (email,), 
-                           fetch="one")
+        # prepare the link dedicated for 'verifyEmail' function
+        link = f"""
+        http://192.168.1.46:5000/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}
+        """
+        #print("token_id", token["token_id"]) # ENDPOINT TESTING
+        #print("raw_token", token["raw_token"]) # for endpoint testing || delete this before pushing
+        send_email_verification(email,full_name.split(" ")[0], link)
 
-    # log the creation of user
-    audit_log(
-        session["user"], 
-        "POST", 
-        "users, access_tokens, agent_details",
-        user_agent["user_id"] 
-        )
 
-    return jsonify({
-        "message": "Agent Account Created Successfully!",
-        "note": f"Email verification sent to {email}"
-        }), 201
+        # log the creation of user
+        audit_log(
+            session["user"], 
+            "POST", 
+            "users, access_tokens, agent_details",
+            result
+            )
+
+        return jsonify({
+            "message": "Agent Account Created Successfully!",
+            "note": f"Email verification sent to {email}"
+            }), 201
+
+    except Error as e:
+        conn.rollback()
+        return jsonify({
+            "message": "Transaction Failed.",
+            "error": str(e)
+        }), 500
+    finally:
+        cursor.close()
+        conn.close()
 
 def changePassword():
     """
