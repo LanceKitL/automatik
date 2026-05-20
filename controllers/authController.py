@@ -1,11 +1,12 @@
 from werkzeug.security import check_password_hash, generate_password_hash
 from utils.token_helper import EmailVerificationToken
-from services.mail_service import send_email_verification
-from flask import session, jsonify, request
+from services.mail_service import send_email_verification, welcome_user
+from flask import session, jsonify, request, render_template
 from datetime import datetime, timezone
-import hashlib
 from utils.log import audit_log
+import json
 from conn import run_query
+import hashlib
 import random
 import string
 
@@ -25,6 +26,38 @@ def me():
         return jsonify({"message": "no user found."})
 
     return jsonify({"message": response})
+
+def seedAdmin():
+    # create a default admin account
+    username = "admin"
+    email = "admin@gmail.com"
+    password = "admin123"
+    hashed_password = generate_password_hash(password)
+    role = 'admin'
+    existing = run_query(
+        """
+        SELECT user_id
+        FROM users
+        WHERE username = %s OR email = %s
+        """,
+        (username, email),
+        fetch="one"
+    )
+    if existing:
+        return jsonify({"message": "admin user is already registered!"}), 400
+    query = """
+            INSERT INTO users
+            (username, hashed_password, email, role, email_verified)
+            VALUES (%s,%s,%s,%s,%s)
+            """
+    param = (username, hashed_password, email, role, 1)
+    res = run_query(query, param)
+    if not res:
+        return jsonify({"message": "admin user creation failed."}), 400
+    
+    return jsonify({
+        "message": "admin user created successfully!",
+        }), 200
 
 def loginHandler():
     data = request.get_json(silent=True) or {}
@@ -156,7 +189,7 @@ def AgentAccountHandler():
     
     # check for duplicate entry!
     is_existing = run_query("""
-                            SELECT * FROM users 
+                            SELECT user_id FROM users 
                             WHERE username = %s 
                             OR email = %s 
                             """,
@@ -165,7 +198,7 @@ def AgentAccountHandler():
     
     # check if is_existing = True
     if is_existing:
-        return jsonify({"message": "user is already registered!"}), 400
+        return jsonify({"message": "username or email already exists."}), 400
     
     # generate the hashed password
     hashedPassword = generate_password_hash(data["password"])
@@ -176,7 +209,7 @@ def AgentAccountHandler():
                        VALUES (%s,%s,%s,%s,%s)
                        """, 
                        (data["username"], data["email"], hashedPassword, 'agent', 0))
-    print(result)
+
     if not result:
         return jsonify({"message": "Agent Account Creation Failed."}), 500
 
@@ -187,7 +220,7 @@ def AgentAccountHandler():
               (result, full_name))
 
     # create agent details too T-T
-    run_query("""
+    agent = run_query("""
               INSERT INTO agent_details (user_id, employee_number) VALUES (%s,%s)
               """,
               (result, f"EMP-{datetime.now().year}-{result}"))
@@ -197,12 +230,33 @@ def AgentAccountHandler():
     if not token:
         return jsonify({"message": "Token generation failed."}), 400
 
-    
-    link = f"http://127.0.0.1:5000/auth/verify?token_id={token["token_id"]}&token={token["token_hash"]}"
+    # prepare the link dedicated for 'verifyEmail' function
+    link = f"""
+    http://192.168.1.46:5000/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}
+    """
+    #print("token_id", token["token_id"]) # ENDPOINT TESTING
+    #print("raw_token", token["raw_token"]) # for endpoint testing || delete this before pushing
     send_email_verification(email,full_name.split(" ")[0], link)
 
+    # get the current user_id
+    user_agent = run_query("""
+                           SELECT user_id FROM users 
+                           WHERE email = %s""", 
+                           (email,), 
+                           fetch="one")
 
-    return jsonify({"message": "Agent Account Created Successfully!"}), 200
+    # log the creation of user
+    audit_log(
+        session["user"], 
+        "POST", 
+        "users, access_tokens, agent_details",
+        user_agent["user_id"] 
+        )
+
+    return jsonify({
+        "message": "Agent Account Created Successfully!",
+        "note": f"Email verification sent to {email}"
+        }), 201
 
 def changePassword():
     """
@@ -267,24 +321,34 @@ def logoutHandler():
 
 def verifyEmail():
     token_id = request.args.get("token_id")
-    raw_token = request.args.get("token")
+    raw_token = request.args.get("raw_token")
 
     response = run_query("""
-                         SELECT * FROM access_token WHERE token_id = %s AND token_type = 'email_verify'
+                         SELECT * FROM access_tokens WHERE token_id = %s AND token_type = 'email_verify'
                          """,
                          (token_id,),
                          fetch="one")
+    
     if response is None:
         return jsonify({"message": "Invalid Token."}), 400
     
     # expiry check
     now = datetime.now(timezone.utc)
-    if response["expires_at"].replace(tzinfo=timezone.utc) < now:
-        return jsonify({"message": "Token Expired."}), 400
     
+    expires_at = response["expires_at"]
+
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    
+    if expires_at < now:
+        return jsonify({"message": "Token Expired."}), 400
+
     if response["used_at"] is not None:
         return jsonify({"message": "Token already used."}), 400
-    
+
+    if not raw_token:
+        return jsonify({"message": "Missing Token."}),400
+
     #hash 
     incoming_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     if incoming_hash != response["token_hash"]:
@@ -292,7 +356,7 @@ def verifyEmail():
 
     # update the token
     run_query("""
-              UPDATE access_token
+              UPDATE access_tokens
               SET used_at = %s
               WHERE token_id =%s
               """,
@@ -305,4 +369,14 @@ def verifyEmail():
             """,
             (response["user_id"],))
 
-    return jsonify({"message": "verification successful!"}), 200
+    user = run_query("""
+                     SELECT email FROM users 
+                     WHERE user_id = %s
+                     """,
+                     (response["user_id"],),
+                     fetch="one")
+
+    #welcome_user(user["email"],user["email"].split("@")[0])    
+
+    return render_template("email/welcome.html", name=user["email"].split("@")[0])
+    

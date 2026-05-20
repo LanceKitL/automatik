@@ -11,16 +11,21 @@ def EmailVerificationToken(user_id):
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
 
     response = run_query("""
-            INSERT INTO access_token
+            INSERT INTO access_tokens
               (token_id,user_id,token_hash,token_type,expires_at)    
               VALUES
               (%s,%s,%s,%s,%s)
             """,
-            (token_id,user_id,token_hash,'email_verify',expires_at))
+            (token_id,
+             user_id,
+             token_hash,
+             'email_verify',
+             expires_at))
     
-    token = run_query("SELECT * FROM access_token WHERE user_id = %s", (response, ), fetch="one")
-
-    if response is None and token is None:
+    if response:
         return False
 
-    return token
+    return {
+        "token_id": token_id,
+        "raw_token": raw_token
+    }
