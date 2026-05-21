@@ -1,5 +1,10 @@
 -> GETTING STARTED <-
 
+# CREATE YOUR .env file sa root folder.
+
+tapos copy paste niyo yung nasa '.env.example'
+yung information about sa email service po natin isesend ko sa dc, thank you!
+
 - before you test the program, it is required to run the xampp.
 - make sure you matched the database name according to the "conn.py"
 - install the dependencies indicated on the requirements.txt
