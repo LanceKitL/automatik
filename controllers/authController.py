@@ -1,9 +1,15 @@
 from werkzeug.security import check_password_hash, generate_password_hash
 from utils.token_helper import EmailVerificationToken
 <<<<<<< HEAD
+<<<<<<< HEAD
 from flask import session, jsonify, request, render_template, abort
 =======
 <<<<<<< HEAD
+=======
+<<<<<<< HEAD
+=======
+>>>>>>> f27b11c (completed the email_verification, designed email response and dynamic IP binding)
+>>>>>>> fe4172f (completed the email_verification, designed email response and dynamic IP binding)
 from flask import session, jsonify, request, render_template, abort, flash
 >>>>>>> 36bf98c (customer_portal)
 from services.mail_service import send_email_verification, welcome_user
@@ -451,6 +457,7 @@ def verifyEmail():
     if not raw_token:
         abort(403)
 
+<<<<<<< HEAD
     incoming_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     if incoming_hash != response["token_hash"]:
         abort(403)
@@ -478,9 +485,11 @@ def verifyEmail():
         return jsonify({"message": "Token already used."}), 400
     
     #hash 
+=======
+>>>>>>> f27b11c (completed the email_verification, designed email response and dynamic IP binding)
     incoming_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     if incoming_hash != response["token_hash"]:
-        return jsonify({"message": "Invalid token."}), 400
+        abort(403)
 
     # update the token
     run_query("""
@@ -498,12 +507,19 @@ def verifyEmail():
             """,
             (response["user_id"],))
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> f27b11c (completed the email_verification, designed email response and dynamic IP binding)
     
     welcome_user(user["email"], 'email/welcome.html')  
     
     return render_template('email_verification_ok.html')
+<<<<<<< HEAD
     
 =======
 
     return jsonify({"message": "verification successful!"}), 200
 >>>>>>> 2f24da0 (added email service / verification)
+=======
+    
+>>>>>>> f27b11c (completed the email_verification, designed email response and dynamic IP binding)
