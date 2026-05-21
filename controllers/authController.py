@@ -3,8 +3,8 @@ from utils.token_helper import EmailVerificationToken
 from services.mail_service import send_email_verification
 from flask import session, jsonify, request, render_template
 from datetime import datetime, timezone
-from utils.log import audit_log
 from conn import run_query, get_db, Error
+from utils.log import audit_log, get_local_ip
 import hashlib
 import random
 import string
@@ -24,7 +24,10 @@ def me():
     if not response:
         return jsonify({"message": "no user found."})
 
-    return jsonify({"message": response})
+    return jsonify({
+        "message": response,
+        "current_ip": get_local_ip()
+        })
 
 def seedAdmin():
     # create a default admin account
@@ -246,12 +249,9 @@ def AgentAccountHandler():
             return jsonify({"message": "Token generation failed."}), 400
 
         # if everything is success
-        conn.commit()
 
         # prepare the link dedicated for 'verifyEmail' function
-        link = f"""
-        http://192.168.1.46:5000/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}
-        """
+        link = f"http://{get_local_ip()}:5000/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}"
         #print("token_id", token["token_id"]) # ENDPOINT TESTING
         #print("raw_token", token["raw_token"]) # for endpoint testing || delete this before pushing
         send_email_verification(email,full_name.split(" ")[0], link)
@@ -262,9 +262,12 @@ def AgentAccountHandler():
             session["user"], 
             "POST", 
             "users, access_tokens, agent_details",
-            result
+            result,
+            conn=conn,
+            cursor=cursor
             )
-
+        
+        conn.commit()
         return jsonify({
             "message": "Agent Account Created Successfully!",
             "note": f"Email verification sent to {email}"
