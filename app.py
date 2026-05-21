@@ -1,11 +1,11 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template
+from services.mail_service import init_mail
 from datetime import timedelta
 from flask_cors import CORS
 from config import MailConfig
-from services.mail_service import init_mail
 import os
 
 #routes
@@ -46,6 +46,21 @@ app.register_blueprint(inquiry_bp, url_prefix="/inquiry")
 app.register_blueprint(supplier_bp, url_prefix="/supplier")
 app.register_blueprint(profile_bp, url_prefix="/profile")
 app.register_blueprint(customerportal_bp, url_prefix="/portal")
+
+#404 not found page
+@app.errorhandler(404)
+def not_found(error):
+    return render_template("error/404.html"), 404
+
+#403 unauthorized access
+@app.errorhandler(403)
+def forbidden(error):
+    return render_template("error/403.html"), 403
+
+#500 server error
+@app.errorhandler(500)
+def server_error(error):
+    return render_template("error/500.html"), 500
 
 @app.route("/health")
 def index():
