@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Error{% endblock %}</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f5f7fb;
+            display: flex;
+            height: 100vh;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+
+        .container {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .code {
+            font-size: 80px;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .message {
+            font-size: 20px;
+            margin: 10px 0 20px;
+        }
+
+        .home-btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #000000;
+            color: white;
+            font-weight: bold;
+            text-decoration: none;
+            border-radius: 6px;
+        }
+
+        .home-btn:hover {
+            background: #171717;
+        }
+
+        /* Color variations */
+        .error-401 { color: #f0ad4e; }
+        .error-403 { color: #d9534f; }
+        .error-404 { color: #6c757d; }
+        .error-500 { color: #dc3545; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    {% block content %}{% endblock %}
+</div>
+
+</body>
+</html>

@@ -8,7 +8,9 @@ from controllers.authController import (
     me,
     verifyEmail,
     changePassword,
-    seedAdmin
+    seedAdmin,
+    resendVerification
+    
 )
 
 auth_bp = Blueprint('auth', __name__)
@@ -33,12 +35,15 @@ def create_customer(): return customerAccountHandler()
 @auth_bp.route("/verify", methods=["GET"])
 def verify_email(): return verifyEmail()
 
+@auth_bp.route("/resendVerification")
+def resend(email): return resendVerification(email)
+    
 @auth_bp.route('/registerAgent', methods=["POST"])
 @logged_in_required
 @role_required("admin") # -> only for admin because people are now allowed to create their own account, unless it's registered by the admin
 def register(): return AgentAccountHandler()
 
-@auth_bp.route("/change_password", methods=["PUT"])
+@auth_bp.route("/changePassword", methods=["PUT"])
 @logged_in_required
 def change_pw(): return changePassword()
 

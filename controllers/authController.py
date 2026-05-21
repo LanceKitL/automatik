@@ -1,7 +1,7 @@
 from werkzeug.security import check_password_hash, generate_password_hash
 from utils.token_helper import EmailVerificationToken
-from services.mail_service import send_email_verification
-from flask import session, jsonify, request, render_template
+from flask import session, jsonify, request, render_template, abort, flash
+from services.mail_service import send_email_verification, welcome_user
 from datetime import datetime, timezone
 from conn import run_query, get_db, Error
 from utils.log import audit_log, get_local_ip
@@ -344,18 +344,64 @@ def logoutHandler():
     session.clear()
     return jsonify({"message": "Logged out success."}), 200
 
+
+def resendVerification(email):
+    #generates new token and a link to send
+    if not email:
+        abort(403)
+    
+    # first -> get the user with the that email
+    # verify if there's actually a user with that email
+    # use the user_id for generating new token
+    user_id = run_query("""
+                        SELECT user_id FROM users 
+                        WHERE email =%s
+                        """,
+                        (email,),
+                        fetch="one")
+
+    if not user_id:
+        abort(404) 
+        
+    token = EmailVerificationToken(user_id)
+    
+    if not token:
+        abort(500)
+    
+    link = f"http://{get_local_ip()}:5000/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}"
+
+    send_email_verification(email,email.split('@')[0],link)
+    
+    flash("Verification email has been resent successfully.", "success")
+    
+    return render_template('email_verification_error.html')
+    
+
 def verifyEmail():
     token_id = request.args.get("token_id")
     raw_token = request.args.get("raw_token")
 
     response = run_query("""
-                         SELECT * FROM access_tokens WHERE token_id = %s AND token_type = 'email_verify'
+                         SELECT * FROM access_tokens 
+                         WHERE token_id = %s 
+                         AND token_type = 'email_verify'
                          """,
                          (token_id,),
                          fetch="one")
     
     if response is None:
-        return jsonify({"message": "Invalid Token."}), 400
+       abort(404)
+    
+    
+    user = run_query("""
+                SELECT email FROM users 
+                WHERE user_id = %s
+                """,
+                (response["user_id"],),
+                fetch="one")
+    
+    if user is None:
+        abort(404) # return not found
     
     # expiry check
     now = datetime.now(timezone.utc)
@@ -366,18 +412,17 @@ def verifyEmail():
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     
     if expires_at < now:
-        return jsonify({"message": "Token Expired."}), 400
+        return render_template('email_verification_error.html', email=user["email"])
 
-    if response["used_at"] is not None:
-        return jsonify({"message": "Token already used."}), 400
+    if response["used_at"] is not None: # if token is already used
+        abort(403)
 
     if not raw_token:
-        return jsonify({"message": "Missing Token."}),400
+        abort(403)
 
-    #hash 
     incoming_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     if incoming_hash != response["token_hash"]:
-        return jsonify({"message": "Invalid token."}), 400
+        abort(403)
 
     # update the token
     run_query("""
@@ -393,15 +438,8 @@ def verifyEmail():
             WHERE user_id =%s
             """,
             (response["user_id"],))
-
-    user = run_query("""
-                     SELECT email FROM users 
-                     WHERE user_id = %s
-                     """,
-                     (response["user_id"],),
-                     fetch="one")
-
-    #welcome_user(user["email"],user["email"].split("@")[0])    
-
-    return render_template("email/welcome.html", name=user["email"].split("@")[0])
+    
+    welcome_user(user["email"], 'email/welcome.html')  
+    
+    return render_template('email_verification_ok.html')
     
