@@ -60,8 +60,6 @@ app.register_blueprint(loans_bp, url_prefix="/loans")
 app.register_blueprint(documents_bp, url_prefix="/admin/documents")
 app.register_blueprint(portal_bp, url_prefix="/portal")
 
-
-
 #404 not found page
 @app.errorhandler(404)
 def not_found(error):
