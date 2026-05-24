@@ -1,1 +1,20 @@
 All previously reported issues have been fixed as of May 15, 2026.
+
+[2026-05-24T15:37:00] Notification endpoint test run
+marker=notif-test-20260524153700
+status=PASSED
+No issues found.
+
+[2026-05-24T15:37:47] Notification endpoint test run
+marker=notif-test-20260524153747
+status=FAILED
+1. POST /notifications/admin/notifications by role: expected 201, got 500; body=None
+	- Error code line: routes/notifications.py:181
+	- Failing SQL: WHERE role = %s AND status = 'active'
+	- Cause: column status does not exist in users table for this environment, which raises MySQL ProgrammingError 1054 (42S22) and returns HTTP 500.
+    - you already used @role_required("admin") automatic, admin lang yung pwedeng maka access nun, no need for %s just put
+    'admin'. tapos yung status po is not existing sa users table. baka yung nirerefer niyo po is is_active.
+
+    - if done na po kayo, i run niyo po yung nasa tests folder. thank you
+
+# recommendation -> please create notifications_readme.txt -> teach us how to use your functions and actual samples with simplest explanation as possible, thank you!
