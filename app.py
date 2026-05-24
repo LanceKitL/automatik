@@ -3,6 +3,7 @@ from datetime import timedelta
 from dotenv import load_dotenv
 from flask_cors import CORS
 import os
+from services.socket_service import socketio, register_socket_events 
 
 load_dotenv()
 
@@ -13,9 +14,11 @@ from routes.vehicles import vehicles_bp
 from routes.inquiries import inquiry_bp
 from routes.supplier import supplier_bp
 from routes.profile import profile_bp
-from routes.notifications import notification_bp
+from routes.notifications import notifications_bp
 
 app = Flask(__name__)
+socketio.init_app(app)
+register_socket_events()
 CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
 
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -40,7 +43,7 @@ app.register_blueprint(vehicles_bp, url_prefix="/vehicle")
 app.register_blueprint(inquiry_bp, url_prefix="/inquiry")
 app.register_blueprint(supplier_bp, url_prefix="/supplier")
 app.register_blueprint(profile_bp, url_prefix="/profile")
-app.register_blueprint(notification_bp)
+app.register_blueprint(notifications_bp, url_prefix="/notifications")
 
 @app.route("/health")
 def index():
@@ -50,4 +53,4 @@ def index():
         }), 200
 
 if __name__ == "__main__":
-    app.run(debug=debug, host="0.0.0.0")
+    socketio.run(app, debug=debug, host="0.0.0.0")
