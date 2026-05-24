@@ -2,6 +2,10 @@ from flask import jsonify, request
 from conn import run_query
 from dateutil.relativedelta import relativedelta
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 3276fd1 (changes in financing/documents)
 
 # ADMIN
 
@@ -139,9 +143,31 @@ def updateScheduleStatus(schedule_id):
     if not status:
         return jsonify({"message": "status is required."}), 400
 
+    schedule = run_query("""
+        SELECT amortization_schedule.*, loan_details.sale_id,
+               sales.customer_id
+        FROM amortization_schedule
+        JOIN loan_details ON amortization_schedule.loan_id = loan_details.loan_id
+        JOIN sales ON loan_details.sale_id = sales.sale_id
+        WHERE amortization_schedule.schedule_id = %s
+    """, (schedule_id,), fetch="one")
+
+    if not schedule:
+        return jsonify({"message": "Schedule not found!"}), 404
+
     run_query("""
         UPDATE amortization_schedule SET status=%s WHERE schedule_id = %s
     """, (status, schedule_id))
+
+    from utils.notification import create_notification
+    create_notification(
+        user_id=schedule["customer_id"],
+        title="Payment Schedule Updated",
+        message=f"Your payment schedule for month {schedule['month_number']} has been marked as {status}.",
+        channel="in_app",
+        ref_type="amortization_schedule",
+        ref_id=schedule_id
+    )
 
     return jsonify({"message": "Schedule status updated successfully!"}), 200
 
@@ -214,3 +240,31 @@ def computeAmortization(loan_id):
         """, (loan_id, n, due_date, principal, interest, monthly_amortization, running_balance, status))
 
     return jsonify({"message": "Amortization recomputed successfully!"}), 200
+<<<<<<< HEAD
+=======
+
+
+
+# CUSTOMER
+
+def getMyLoan(customer_id):
+    loan = run_query("""
+        SELECT loan_details.*
+        FROM loan_details
+        JOIN sales ON loan_details.sale_id = sales.sale_id
+        WHERE sales.customer_id = %s
+        ORDER BY loan_details.loan_id DESC
+    """, (customer_id,), fetch="one")
+
+    if not loan:
+        return jsonify({"message": "No loan found!"}), 404
+
+    schedule = run_query("""
+        SELECT amortization_schedule.*
+        FROM amortization_schedule
+        WHERE amortization_schedule.loan_id = %s
+        ORDER BY amortization_schedule.due_date ASC
+    """, (loan["loan_id"],), fetch="all")
+
+    return jsonify({"loan": loan, "schedule": schedule}), 200
+>>>>>>> 3276fd1 (changes in financing/documents)
