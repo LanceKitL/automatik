@@ -2,14 +2,18 @@ from flask import jsonify, request
 from conn import run_query
 from dateutil.relativedelta import relativedelta
 
+
+
+# ADMIN
+
 def getAllLoans():
     loans = run_query("""
-        SELECT ld.*, s.payment_type, s.selling_price,
-               u.email, v.brand, v.model
-        FROM loan_details ld
-        JOIN sales s ON ld.sale_id = s.sale_id
-        JOIN users u ON s.customer_id = u.user_id
-        JOIN vehicles v ON s.vehicle_id = v.vehicle_id
+        SELECT loan_details.*, sales.payment_type, sales.selling_price,
+            customer_details.customer_number, vehicles.brand, vehicles.model
+        FROM loan_details
+        JOIN sales ON loan_details.sale_id = sales.sale_id
+        JOIN customer_details ON sales.customer_id = customer_details.user_id
+        JOIN vehicles ON sales.vehicle_id = vehicles.vehicle_id
     """, fetch="all")
 
     if not loans:
@@ -20,19 +24,19 @@ def getAllLoans():
 
 def getLoanById(loan_id):
     loan = run_query("""
-        SELECT ld.*
-        FROM loan_details ld
-        WHERE ld.loan_id = %s
+        SELECT loan_details.*
+        FROM loan_details
+        WHERE loan_details.loan_id = %s
     """, (loan_id,), fetch="one")
 
     if not loan:
         return jsonify({"message": "Loan not found!"}), 404
 
     schedule = run_query("""
-        SELECT sched.*
-        FROM amortization_schedule sched
-        WHERE sched.loan_id = %s 
-        ORDER BY sched.due_date ASC
+        SELECT amortization_schedule.*
+        FROM amortization_schedule
+        WHERE amortization_schedule.loan_id = %s 
+        ORDER BY amortization_schedule.due_date ASC
     """, (loan_id,), fetch="all")
 
     return jsonify({"loan": loan, "schedule": schedule}), 200
@@ -95,31 +99,16 @@ def updateLoanStatus(loan_id):
 
 def getLoanSchedule(loan_id):
     schedule = run_query("""
-        SELECT sched.*
-        FROM amortization_schedule sched
-        WHERE sched.loan_id = %s 
-        ORDER BY sched.due_date ASC
+        SELECT amortization_schedule.*
+        FROM amortization_schedule
+        WHERE amortization_schedule.loan_id = %s 
+        ORDER BY amortization_schedule.due_date ASC
     """, (loan_id,), fetch="all")
 
     if not schedule:
         return jsonify({"message": "No schedule found!"}), 404
 
     return jsonify({"data": schedule}), 200
-
-
-def getMyLoan(customer_id):
-    loan = run_query("""
-        SELECT ld.*
-        FROM loan_details ld
-        JOIN sales s ON ld.sale_id = s.sale_id
-        WHERE s.customer_id = %s
-        ORDER BY ld.loan_id DESC
-    """, (customer_id,), fetch="one")
-
-    if not loan:
-        return jsonify({"message": "No loan found!"}), 404
-
-    return jsonify({"data": loan}), 200
 
 
 def updateScheduleStatus(schedule_id):
@@ -138,15 +127,17 @@ def updateScheduleStatus(schedule_id):
 
 def getOverdueSchedules():
     overdue = run_query("""
-        SELECT sched.*, ld.loan_amount, ld.interest_rate,
-               u.email, v.brand, v.model
-        FROM amortization_schedule sched
-        JOIN loan_details ld ON sched.loan_id = ld.loan_id
-        JOIN sales s ON ld.sale_id = s.sale_id
-        JOIN users u ON s.customer_id = u.user_id
-        JOIN vehicles v ON s.vehicle_id = v.vehicle_id
-        WHERE sched.status = 'overdue'
-        ORDER BY sched.due_date ASC
+        SELECT amortization_schedule.*, loan_details.loan_amount, loan_details.interest_rate,
+               users.email, vehicles.brand, vehicles.model,
+               customer_details.customer_number
+        FROM amortization_schedule
+        JOIN loan_details ON amortization_schedule.loan_id = loan_details.loan_id
+        JOIN sales ON loan_details.sale_id = sales.sale_id
+        JOIN users ON sales.customer_id = users.user_id
+        JOIN customer_details ON sales.customer_id = customer_details.user_id
+        JOIN vehicles ON sales.vehicle_id = vehicles.vehicle_id
+        WHERE amortization_schedule.status = 'overdue'
+        ORDER BY amortization_schedule.due_date ASC
     """, fetch="all")
 
     if not overdue:
@@ -156,7 +147,6 @@ def getOverdueSchedules():
 
 
 def computeAmortization(loan_id):
-
     data = request.get_json(silent=True) or {}
     interest_rate = data.get("interest_rate")
     term_months = data.get("term_months")
@@ -165,10 +155,10 @@ def computeAmortization(loan_id):
         return jsonify({"message": "interest_rate and term_months are required."}), 400
 
     loan = run_query("""
-        SELECT ld.*, s.created_at as sale_date
-        FROM loan_details ld
-        JOIN sales s ON ld.sale_id = s.sale_id
-        WHERE ld.loan_id = %s
+        SELECT loan_details.*, sales.created_at as sale_date
+        FROM loan_details
+        JOIN sales ON loan_details.sale_id = sales.sale_id
+        WHERE loan_details.loan_id = %s
     """, (loan_id,), fetch="one")
 
     if not loan:
@@ -203,3 +193,28 @@ def computeAmortization(loan_id):
         """, (loan_id, n, due_date, principal, interest, monthly_amortization, running_balance, status))
 
     return jsonify({"message": "Amortization recomputed successfully!"}), 200
+
+
+
+# CUSTOMER
+
+def getMyLoan(customer_id):
+    loan = run_query("""
+        SELECT loan_details.*
+        FROM loan_details
+        JOIN sales ON loan_details.sale_id = sales.sale_id
+        WHERE sales.customer_id = %s
+        ORDER BY loan_details.loan_id DESC
+    """, (customer_id,), fetch="one")
+
+    if not loan:
+        return jsonify({"message": "No loan found!"}), 404
+
+    schedule = run_query("""
+        SELECT amortization_schedule.*
+        FROM amortization_schedule
+        WHERE amortization_schedule.loan_id = %s
+        ORDER BY amortization_schedule.due_date ASC
+    """, (loan["loan_id"],), fetch="all")
+
+    return jsonify({"loan": loan, "schedule": schedule}), 200

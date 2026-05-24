@@ -1,25 +1,45 @@
 from flask import jsonify, request
 from conn import run_query
 
+
 def getAllDocuments():
-    documents = run_query("""
-        SELECT doc.*, s.selling_price, s.payment_type, s.status
-        FROM documents doc
-        JOIN sales s ON doc.sale_id = s.sale_id
-    """, fetch="all")
+    data = request.args
+    document_type = data.get("document_type")
+    sale_id = data.get("sale_id")
+
+    query = """
+        SELECT documents.*
+        FROM documents
+        WHERE 1=1
+    """
+    params = []
+
+    if document_type:
+        query += " AND documents.document_type = %s"
+        params.append(document_type)
+
+    if sale_id:
+        query += " AND documents.sale_id = %s"
+        params.append(sale_id)
+
+    documents = run_query(query, params if params else None, fetch="all")
 
     if not documents:
         return jsonify({"message": "No documents found!"}), 404
 
     return jsonify({"data": documents}), 200
-
+ 
+    if not documents:
+        return jsonify({"message": "No documents found!"}), 404
+ 
+    return jsonify({"data": documents}), 200
 
 def getDocumentById(document_id):
     document = run_query("""
-        SELECT doc.*, s.selling_price, s.payment_type, s.status
-        FROM documents doc
-        JOIN sales s ON doc.sale_id = s.sale_id
-        WHERE doc.document_id = %s
+        SELECT documents.*, sales.selling_price, sales.payment_type, sales.status
+        FROM documents
+        JOIN sales ON documents.sale_id = sales.sale_id
+        WHERE documents.document_id = %s
     """, (document_id,), fetch="one")
 
     if not document:
@@ -71,28 +91,13 @@ def deleteDocument(document_id):
 
 def getMyDocuments(customer_id):
     documents = run_query("""
-        SELECT doc.*, s.selling_price, s.payment_type, s.status
-        FROM documents doc
-        JOIN sales s ON doc.sale_id = s.sale_id
-        WHERE s.customer_id = %s AND doc.is_accessible = 1
+        SELECT documents.*, sales.selling_price, sales.payment_type, sales.status
+        FROM documents
+        JOIN sales ON documents.sale_id = sales.sale_id
+        WHERE sales.customer_id = %s AND documents.is_accessible = 1
     """, (customer_id,), fetch="all")
 
     if not documents:
         return jsonify({"message": "No documents found!"}), 404
 
     return jsonify({"data": documents}), 200
-
-
-def getMyDocumentById(document_id, customer_id):
-    document = run_query("""
-        SELECT doc.document_id, doc.sale_id, doc.document_type, doc.file_url, doc.is_accessible, doc.created_at,
-               s.selling_price, s.payment_type, s.status, s.sale_date
-        FROM documents doc
-        JOIN sales s ON doc.sale_id = s.sale_id
-        WHERE doc.document_id = %s AND s.customer_id = %s AND doc.is_accessible = 1
-    """, (document_id, customer_id), fetch="one")
-
-    if not document:
-        return jsonify({"message": "Document not found or not accessible!"}), 404
-
-    return jsonify({"data": document}), 200
