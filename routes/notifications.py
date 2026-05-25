@@ -176,10 +176,10 @@ def create_admin_notification():
         }), 201
 
     users = run_query("""
-        SELECT user_id
-        FROM users
-        WHERE role = %s AND status = 'active'
-    """, (role,), fetch="all")
+    SELECT user_id
+    FROM users
+    WHERE role = 'admin' AND is_active = 1
+        """, fetch="all")
 
     if not users:
         return jsonify({
