@@ -15,6 +15,7 @@ from routes.vehicles import vehicles_bp
 from routes.inquiries import inquiry_bp
 from routes.supplier import supplier_bp
 from routes.profile import profile_bp
+from routes.sales import sales_bp
 
 app = Flask(__name__)
 
@@ -44,6 +45,7 @@ app.register_blueprint(vehicles_bp, url_prefix="/vehicle")
 app.register_blueprint(inquiry_bp, url_prefix="/inquiry")
 app.register_blueprint(supplier_bp, url_prefix="/supplier")
 app.register_blueprint(profile_bp, url_prefix="/profile")
+app.register_blueprint(sales_bp, url_prefix="/sales")
 
 #404 not found page
 @app.errorhandler(404)

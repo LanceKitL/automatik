@@ -35,6 +35,7 @@ def showPayments(id):
 
 # unfinished no notification yet
 def recordPayments(id):
+    user = session["user"]
     data = request.get_json()
     
     sale_id = data.get("sale_id")
@@ -57,7 +58,7 @@ def recordPayments(id):
                          JOIN payments ON sales.sale_id = payments.sale_id
                          WHERE payments.sale_id = %s LIMIT 1""", (sale_id, ), fetch="one")
     
-    if result == "installment":
+    if result["installment"]:
         paid = "paid"
         upd = run_query("""UPDATE amortization_schedule
                          SET staus = %s WHERE schedule_id = %s"""
