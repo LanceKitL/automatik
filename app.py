@@ -1,6 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+from validators.middleware import role_required, logged_in_required
+from conn import run_query
+
 from flask import Flask, jsonify, render_template
 from services.mail_service import init_mail
 from datetime import timedelta
@@ -66,6 +69,14 @@ def index():
         "message": "Welcome to AUTOMATIK API!",
         "status": 200
         }), 200
+
+@app.route("/logs")
+@logged_in_required
+@role_required("admin")
+def indexLogs():
+    res = run_query("SELECT * FROM audit_logs", fetch="all")
+    return jsonify(res), 200
+    
 
 if __name__ == "__main__":
     app.run(debug=debug, host="0.0.0.0")

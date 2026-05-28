@@ -1,30 +1,30 @@
-from flask import Blueprint
+from flask import Blueprint, request
 from validators.middleware import role_required,logged_in_required
 from controllers.inquiriesController import (
-    submit_inquiry,
-    get_inquiry_details,
-    get_inquiries,
-    update_inquiry
+    submitInquiry,
+    displayInquiries,
+    indexCustomerInquiries
 )
 
 inquiry_bp = Blueprint('inquiry', __name__)
 
-@inquiry_bp.route("/") 
-@logged_in_required
-@role_required("admin","agent")
-def home(): return get_inquiries()
 
-@inquiry_bp.route("/<int:id>")
-@logged_in_required
-@role_required("admin","agent")
-def show(id): return get_inquiry_details(id)
+#public
+@inquiry_bp.route("/", methods=["POST"])
+def create():
+    return submitInquiry()
 
-@inquiry_bp.route("/<int:id>/update", methods=["PUT"])
-@logged_in_required
-@role_required("admin", "agent")
-def update(id): return update_inquiry(id)
+#agent
 
-@inquiry_bp.route("/create", methods=["POST"])
+#customer
+@inquiry_bp.route("/my")
 @logged_in_required
-@role_required("admin","agent")
-def create(): return submit_inquiry()
+@role_required("customer","admin")
+def index_customer_inquiries():
+    return indexCustomerInquiries()
+
+#admin
+@inquiry_bp.route("/")
+@role_required("admin")
+def admin_index():
+    return displayInquiries()

@@ -1,0 +1,4 @@
+2026-05-26 Service route/controller test log
+- Route import check failed: `import routes.service` raises `ImportError` because `controllers.serviceController` does not define `createServiceSlotHandler`, which the blueprint imports.
+- Additional missing handlers referenced by the blueprint but absent from `controllers/serviceController.py`: `listMyBookingsHandler`, `updateBookingStatusHandler`, and `listWarrantyClaimsHandler`.
+- Warranty controller checks passed under a mocked DB/session: `submitWarrantyClaimHandler()` returned 201 for a valid payload, `updateWarrantyStatusHandler()` returned 400 when rejecting without a resolution note, and 200 for a valid approved update.
