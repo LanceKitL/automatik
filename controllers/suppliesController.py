@@ -1,5 +1,6 @@
 from flask import request, jsonify
 from conn import run_query
+from datetime import datetime
 
 #get all supplies with supplier details
 def getSupplies():
@@ -35,13 +36,14 @@ def createSupplies():
     stock_qty = data.get("stock_qty")
     reorder_level = data.get("reorder_level")
     supplier_id = data.get("supplier_id")
+    update_at = datetime.now()
 
     if not part_name or stock_qty is None or supplier_id is None:
         return jsonify({"message": "part_name, stock_qty, and supplier_id are required."}), 400
 
     run_query(
-        "INSERT INTO supplies (part_name, part_number, unit_cost, stock_qty, reorder_level, supplier_id) VALUES (%s, %s, %s, %s, %s, %s)",
-        (part_name, part_number, unit_cost, stock_qty, reorder_level, supplier_id)
+        "INSERT INTO supplies (part_name, part_number, unit_cost, stock_qty, reorder_level, supplier_id, update_at) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        (part_name, part_number, unit_cost, stock_qty, reorder_level, supplier_id, update_at)
     )
 
     return jsonify({"message": "Supply created successfully."}), 201
@@ -56,7 +58,8 @@ def updateSupplies(supply_id):
         "unit_cost": data.get("unit_cost"),
         "stock_qty": data.get("stock_qty"),
         "reorder_level": data.get("reorder_level"),
-        "supplier_id": data.get("supplier_id")
+        "supplier_id": data.get("supplier_id"), 
+        "update_at": datetime.now()
     }
 
     fields = []
