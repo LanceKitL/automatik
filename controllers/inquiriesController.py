@@ -104,6 +104,11 @@ def submitInquiry(): # -> POST
 
 #customer
 def indexCustomerInquiries():
+    """
+        CUSTOMER PORTAL
+        
+        - this function returns current customers inquiries.
+    """
     customer_id = session["user"]
     
     res = run_query("""
@@ -137,8 +142,14 @@ def indexCustomerInquiries():
     
     return jsonify(formatted_data), 200        
 
+
 #agent
 def assignInquiry(inquiry_id):
+    """
+    SALES AGENT PORTAL
+    
+    This function helps agent to self-assign themselves to a specific tasks.
+    """
     # inquiries returned to agent dashboard is only status = 'open'
     # inquiry_id cannot be None
     # inquiry_id cannot have an existing agent_id
@@ -158,10 +169,10 @@ def assignInquiry(inquiry_id):
     
     if res.get("agent_id"):
         return jsonify({
-            "message": "task taken already."
+            "message": "task already taken."
         }),400
         
-    old_value = res.get("agent_id")
+    old_value = res.get("status")
     
     run_query("""
               UPDATE inquiries SET agent_id = %s, status = %s
@@ -169,7 +180,10 @@ def assignInquiry(inquiry_id):
               """,
               (current_agent_id,'assigned',inquiry_id))
     
-    new_value = current_agent_id
+    new_value = {
+        "agent_id": current_agent_id,
+        "status": "assigned"
+    }
     
     audit_log(
         current_agent_id,
@@ -184,11 +198,78 @@ def assignInquiry(inquiry_id):
         "message": "task assigned successfully!"
     }), 200
 
-def resolveInquiriy(inquiry_id):
+def resolveInquiry(inquiry_id):
+    """
+    SALES AGENT PORTAL
     
-    pass
+        Marks specific inquiry as 'resolved'.
+    """
+    # check if inquiry is empty
+    # SET status = 'resolved'
+    # resolved_at = datetime.now()
+    # only resolve at task if its assigned
+    
+    # first layer -> check if inquiry_id does not exists
+    if not inquiry_id:
+        return jsonify({
+            "message": "inquiry does not exists. failed to update."
+        }), 400
+    
+    # second layer -> check if inquiry_id exists in the database and if the task is assigned to the current agent.
+    res = run_query("""
+                    SELECT * FROM inquiries 
+                    WHERE inquiry_id = %s AND agent_id = %s
+                    """,
+                    (inquiry_id,session["user"]),
+                    fetch="one")
+
+    agent_assigned_inquiries = run_query("""
+                                         SELECT * FROM inquiries WHERE agent_id = %s AND status = 'assigned'
+                                         """,
+                                         (session["user"],),
+                                         fetch="all")
+    if not res:
+        return jsonify({
+            "message": "inquiry does not exists.",
+        }), 400
+
+    if res["status"] == "resolved":
+        return jsonify({
+            "message": "task already marked as resolved.",
+            "available_tasks": agent_assigned_inquiries
+        }), 400
+    # if it does exist, get the old value
+    old_value = res["status"]
+        
+    run_query("""
+              UPDATE inquiries SET status = %s, resolved_at = %s
+              WHERE inquiry_id = %s
+              """,
+              ('resolved',datetime.now(),inquiry_id))
+
+    audit_log(
+        session["user"],
+        "PUT",
+        "inquiries",
+        res["inquiry_id"],
+        json.dumps(old_value, default=str),
+        json.dumps({"status": "resolved"}, default=str)
+    )
+
+    return jsonify({
+        "message": "task marked as resolved."
+    })
+
 # admin
 def displayInquiries():
+    """
+    SALES AGENT | ADMIN PORTAL
+    
+        This function returns the inquiries based on the type of user ['admin','agent']
+        
+        admin can access the search and filter, and he can all see the inquiries,
+        agent can only view inquiries with STATUS = 'open'.
+    """
     conditions = []
     values = []
     role = session["role"]
@@ -338,3 +419,52 @@ def displayInquiries():
         })
 
     return jsonify(formatted_response), 200
+
+def closeInquiry(inquiry_id):
+    """
+        ADMIN PORTAL
+        
+        this function closes an inquiry.
+    """
+    
+    if not inquiry_id:
+        return jsonify({
+            "message": "inquiry_id is required."
+        }), 400
+    
+    res = run_query(
+        """
+            SELECT * FROM inquiries 
+            WHERE inquiry_id = %s AND status = 'resolved'
+        """,
+        (inquiry_id,),
+        fetch="one"
+    )
+    
+    if not res:
+        return jsonify({
+            "message": "inquiry not found or not resolved."
+        }), 400
+        
+    # PASSED CHECKS
+    old_value = res["status"]
+    
+    # close the inquiry
+    run_query("""
+              UPDATE inquiries SET status = 'closed' 
+              WHERE inquiry_id = %s 
+              """,
+              (inquiry_id,))
+    
+    audit_log(
+        session["user"],
+        "PUT",
+        "inquiries",
+        res["inquiry_id"],
+        json.dumps(old_value, default=str),
+        json.dumps({"status": "closed"}, default=str)
+    )
+    
+    return jsonify({
+        "message": "inquiry marked as 'closed'."
+    }), 200

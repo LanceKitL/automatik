@@ -153,7 +153,7 @@ def delete_user_with(user_id):
 #agents
 def get_agents():
     result = run_query(""" 
-                       SELECT users.username, users.role, agent_details.employee_number, 
+                       SELECT users.user_id as _id, users.username, users.role, agent_details.employee_number, 
                        agent_details.hire_date 
                        FROM users 
                        INNER JOIN agent_details ON users.user_id = agent_details.user_id
