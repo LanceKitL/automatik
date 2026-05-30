@@ -2,6 +2,7 @@ from conn import run_query
 from flask import session, jsonify, request
 from datetime import datetime
 from utils.log import audit_log
+from utils.log import audit_log
 import json
 # inquiry_id
 # user_id
@@ -23,6 +24,10 @@ def submitInquiry(): # -> POST
         this function will send an inquiry to the system.
         if guest: require guest_name, guest_email.
     """
+    if session.get("role") == "agent" or session.get("role") == "admin":
+        return jsonify({
+            "message": "Forbidden Access."
+        }), 400
     # important questions to answer before proceeding
     # kailan nagkakaron ng inquiry?
     # -> kapag si potential customer or existing customer is may purchase intent, gusto mag test drive
@@ -53,7 +58,7 @@ def submitInquiry(): # -> POST
                   (user,vehicle_id,message,'open'))
         
         audit_log(
-            user=user, 
+            user=res["user_id"], 
             action="POST", 
             tablename="inquiries", 
             record_id=res
@@ -133,12 +138,60 @@ def indexCustomerInquiries():
     return jsonify(formatted_data), 200        
 
 #agent
+def assignInquiry(inquiry_id):
+    # inquiries returned to agent dashboard is only status = 'open'
+    # inquiry_id cannot be None
+    # inquiry_id cannot have an existing agent_id
+    current_agent_id = session["user"]
+    
+    if inquiry_id is None:
+        return jsonify({
+            "message": "inquiry_id cannot be empty."
+        }), 400
+    
+    res = run_query("""
+                    SELECT * FROM inquiries 
+                    WHERE inquiry_id = %s
+                    """, 
+                    (inquiry_id,),
+                    fetch="one")
+    
+    if res.get("agent_id"):
+        return jsonify({
+            "message": "task taken already."
+        }),400
+        
+    old_value = res.get("agent_id")
+    
+    run_query("""
+              UPDATE inquiries SET agent_id = %s, status = %s
+              WHERE inquiry_id = %s 
+              """,
+              (current_agent_id,'assigned',inquiry_id))
+    
+    new_value = current_agent_id
+    
+    audit_log(
+        current_agent_id,
+        "PUT",
+        "inquiries",
+        res["inquiry_id"],
+        json.dumps(old_value, default=str),
+        json.dumps(new_value, default=str)
+    )    
+    
+    return jsonify({
+        "message": "task assigned successfully!"
+    }), 200
 
+def resolveInquiriy(inquiry_id):
+    
+    pass
 # admin
 def displayInquiries():
     conditions = []
     values = []
-
+    role = session["role"]
     params = {
         "status": request.args.get("status"),
         "agent_id": request.args.get("agent_id")
@@ -156,54 +209,101 @@ def displayInquiries():
 
     if conditions:
         search = "WHERE " + " AND ".join(conditions)
+    
+    query = ""
+    
+    if role == "admin":
+        query = f"""
+            SELECT
+                i.user_id,
 
-    query = f"""
-        SELECT
-            i.user_id,
+                CASE
+                    WHEN i.user_id IS NOT NULL THEN up.full_name
+                    ELSE i.guest_name
+                END AS name,
 
-            CASE
-                WHEN i.user_id IS NOT NULL THEN up.full_name
-                ELSE i.guest_name
-            END AS name,
+                CASE
+                    WHEN i.user_id IS NOT NULL THEN up.phone_number
+                    ELSE i.guest_number
+                END AS contact_number,
 
-            CASE
-                WHEN i.user_id IS NOT NULL THEN up.phone_number
-                ELSE i.guest_number
-            END AS contact_number,
+                CASE
+                    WHEN i.user_id IS NOT NULL THEN u.email
+                    ELSE i.guest_email
+                END AS email,
 
-            CASE
-                WHEN i.user_id IS NOT NULL THEN u.email
-                ELSE i.guest_email
-            END AS email,
+                v.vehicle_id,
+                v.brand,
+                v.model,
+                v.price,
 
-            v.vehicle_id,
-            v.brand,
-            v.model,
-            v.price,
+                i.message,
+                i.status,
+                i.agent_id,
+                i.inquiry_id
 
-            i.message,
-            i.status,
-            i.agent_id,
-            i.inquiry_id
+            FROM inquiries i
 
-        FROM inquiries i
+            JOIN vehicles v
+                ON i.vehicle_id = v.vehicle_id
 
-        JOIN vehicles v
-            ON i.vehicle_id = v.vehicle_id
+            LEFT JOIN user_profile up
+                ON i.user_id = up.user_id
+            
+            LEFT JOIN users u
+                ON i.user_id = u.user_id
 
-        LEFT JOIN user_profile up
-            ON i.user_id = up.user_id
+            {search}
+        """
+    else:
+        query = f"""
+            SELECT
+                i.user_id,
+
+                CASE
+                    WHEN i.user_id IS NOT NULL THEN up.full_name
+                    ELSE i.guest_name
+                END AS name,
+
+                CASE
+                    WHEN i.user_id IS NOT NULL THEN up.phone_number
+                    ELSE i.guest_number
+                END AS contact_number,
+
+                CASE
+                    WHEN i.user_id IS NOT NULL THEN u.email
+                    ELSE i.guest_email
+                END AS email,
+
+                v.vehicle_id,
+                v.brand,
+                v.model,
+                v.price,
+
+                i.message,
+                i.status,
+                i.agent_id,
+                i.inquiry_id
+
+            FROM inquiries i
+
+            JOIN vehicles v
+                ON i.vehicle_id = v.vehicle_id
+
+            LEFT JOIN user_profile up
+                ON i.user_id = up.user_id
+            
+            LEFT JOIN users u
+                ON i.user_id = u.user_id
+
+            WHERE i.status = 'open'
+        """
         
-        LEFT JOIN users u
-            ON i.user_id = u.user_id
-
-        {search}
-    """
 
     res = run_query(query, tuple(values), fetch="all")
 
     if not res:
-        return jsonify({"message": "No inquiries found."}), 404
+        return jsonify({"message": "No available tasks today, keep up the good work!"})
 
     formatted_response = []
 
