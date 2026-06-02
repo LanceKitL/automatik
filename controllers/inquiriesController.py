@@ -58,7 +58,7 @@ def submitInquiry(): # -> POST
                   (user,vehicle_id,message,'open'))
         
         audit_log(
-            user=res["user_id"], 
+            id=res["user_id"], 
             action="POST", 
             tablename="inquiries", 
             record_id=res
