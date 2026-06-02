@@ -437,6 +437,9 @@ def updateSalesContracts():
     
  return jsonify({"message": "salescontracts"})
 
+
+#---------------------------------------INSURANCE_RECORDS------------------------------------------------------
+
 def indexInsuranceRecords():
     insurance_records = run_query("""SELECT insurance.insurance_id, 
 								  vehicles.vehicle_id,  vehicles.vin, vehicles.brand, vehicles.model,
