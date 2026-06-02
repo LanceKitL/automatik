@@ -443,13 +443,15 @@ def closeInquiry(inquiry_id):
     
     if not res:
         return jsonify({
-            "message": "inquiry not found or not resolved."
+            "message": "inquiry not found or not marked 'resolved'."
         }), 400
         
     # PASSED CHECKS
+    
+    # store the old value
     old_value = res["status"]
     
-    # close the inquiry
+    # set inquiry status to 'closed'
     run_query("""
               UPDATE inquiries SET status = 'closed' 
               WHERE inquiry_id = %s 
