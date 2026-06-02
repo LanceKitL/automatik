@@ -2,6 +2,7 @@ from conn import run_query
 from flask import session, jsonify, request
 from datetime import datetime
 from utils.log import audit_log
+from utils.log import audit_log
 import json
 # inquiry_id
 # user_id
@@ -15,161 +16,457 @@ import json
 # created_at
 # resolved_at
 
-# POST 
-def submit_inquiry():
-    data = request.get_json(silent=True) or {}
-
-    user_id = data.get("user_id")
-    agent_id = data.get("agent_id")
-    vehicle_id = data.get("vehicle_id") 
-    guest_name = data.get("guest_name") 
-    guest_email = data.get("guest_email")
-    guest_number = data.get("guest_number") 
-    message = data.get("message")
-
-    role = session.get("role")
-    session_user = session.get("user")
-
-    if role == "agent":
-        agent_id = session_user
-
-    if agent_id is not None:
-        agent = run_query(
-            "SELECT user_id FROM users WHERE user_id = %s AND role = %s",
-            (agent_id, "agent"),
-            fetch="one"
-        )
-        if not agent:
-            return jsonify({"message": "agent_id is invalid."}), 400
-
-    if user_id is not None:
-        user = run_query(
-            "SELECT user_id FROM users WHERE user_id = %s",
-            (user_id,),
-            fetch="one"
-        )
-        if not user:
-            return jsonify({"message": "user_id is invalid."}), 400
+#public
+# this function is for customer/guest user, this will run whenever they want to 
+# submit an inquiry
+def submitInquiry(): # -> POST
+    """
+        this function will send an inquiry to the system.
+        if guest: require guest_name, guest_email.
+    """
+    if session.get("role") == "agent" or session.get("role") == "admin":
+        return jsonify({
+            "message": "Forbidden Access."
+        }), 400
+    # important questions to answer before proceeding
+    # kailan nagkakaron ng inquiry?
+    # -> kapag si potential customer or existing customer is may purchase intent, gusto mag test drive
     
-    required_fields = {
-        "vehicle_id": vehicle_id,        
-        "guest_email": guest_email,
-        "message": message,
-        "guest_number": guest_number,
-        "guest_name": guest_name
+    # 1. check first if the current user is logged in
+    user = session.get("user")
+    data = request.get_json()
+    message = data.get("message")
+    vehicle_id = data.get("vehicle_id")
+    
+    if not message:
+        return jsonify({
+            "message": "Inquiry message is required."
+            }), 400
+    
+    if not vehicle_id:
+        return jsonify({
+            "message": "vehicle id is required."
+            }), 400
+    
+    if user is not None: # if the inquiry comes from existing customer
+        res = run_query("""
+                  INSERT INTO inquiries 
+                  (user_id, vehicle_id, message, status)
+                  VALUES
+                  (%s,%s,%s,%s)
+                  """,
+                  (user,vehicle_id,message,'open'))
+        
+        audit_log(
+            user=res["user_id"], 
+            action="POST", 
+            tablename="inquiries", 
+            record_id=res
+            )
+
+        return jsonify({"message": "Inquiry sent successfully!"}), 200
+    else: # if inquiry comes from a guest
+        # these fields are required
+        name = data.get("name")
+        email = data.get("email")
+        number = data.get("number")
+        
+        if not name or not email:
+            return jsonify({"message": "please provide your name and email."}), 400
+
+        # kapag may laman edi go except no user_id here 
+        res = run_query("""
+                    INSERT INTO inquiries 
+                    (vehicle_id,guest_name,guest_email,guest_number, message, status)
+                    VALUES
+                    (%s,%s,%s,%s,%s,%s)
+                    """,
+                    (vehicle_id,name,email,number,message,'open'))
+        
+        if not res:
+            return jsonify({"message": "sending inquiry failed."}),400
+        
+        audit_log(
+            id=None,
+            action="POST", 
+            tablename="inquiries", 
+            record_id=res,
+            new_value=json.dumps({
+                "guest_name": name,
+                "guest_email": email,
+                "guest_number": number,
+                },  
+                default=str)
+            )
+        
+        return jsonify({"message": "Inquiry sent successfully!"}), 200
+
+
+#customer
+def indexCustomerInquiries():
+    """
+        CUSTOMER PORTAL
+        
+        - this function returns current customers inquiries.
+    """
+    customer_id = session["user"]
+    
+    res = run_query("""
+                    SELECT * FROM inquiries 
+                    JOIN vehicles ON inquiries.vehicle_id = vehicles.vehicle_id
+                    WHERE inquiries.user_id = %s
+                    """,
+                    (customer_id,),
+                    fetch="all")
+    
+    if not res:
+        return jsonify({"message": "customer not found."}), 404
+    
+    formatted_data = []
+    
+    for row in res:
+        formatted_data.append({
+            "inquiry_id": row["inquiry_id"],
+            "agent_assigned": row["agent_id"],
+            "message": row["message"],
+            "status": row["status"],
+            "resolved_at": row["resolved_at"],
+            "vehicle": {
+                "model": row["model"],
+                "brand": row["brand"],
+                "color": row["color"],
+                "body_type": row["body_type"],
+                "price": row["price"],
+            }
+        })
+    
+    return jsonify(formatted_data), 200        
+
+
+#agent
+def assignInquiry(inquiry_id):
+    """
+    SALES AGENT PORTAL
+    
+    This function helps agent to self-assign themselves to a specific tasks.
+    """
+    # inquiries returned to agent dashboard is only status = 'open'
+    # inquiry_id cannot be None
+    # inquiry_id cannot have an existing agent_id
+    current_agent_id = session["user"]
+    
+    if inquiry_id is None:
+        return jsonify({
+            "message": "inquiry_id cannot be empty."
+        }), 400
+    
+    res = run_query("""
+                    SELECT * FROM inquiries 
+                    WHERE inquiry_id = %s
+                    """, 
+                    (inquiry_id,),
+                    fetch="one")
+    
+    if res.get("agent_id"):
+        return jsonify({
+            "message": "task already taken."
+        }),400
+        
+    old_value = res.get("status")
+    
+    run_query("""
+              UPDATE inquiries SET agent_id = %s, status = %s
+              WHERE inquiry_id = %s 
+              """,
+              (current_agent_id,'assigned',inquiry_id))
+    
+    new_value = {
+        "agent_id": current_agent_id,
+        "status": "assigned"
     }
     
-    for field_name, value in required_fields.items():
-        if not value:
-            return jsonify({"message": f"{field_name} is required."}), 400
+    audit_log(
+        current_agent_id,
+        "PUT",
+        "inquiries",
+        res["inquiry_id"],
+        json.dumps(old_value, default=str),
+        json.dumps(new_value, default=str)
+    )    
+    
+    return jsonify({
+        "message": "task assigned successfully!"
+    }), 200
+
+def resolveInquiry(inquiry_id):
+    """
+    SALES AGENT PORTAL
+    
+        Marks specific inquiry as 'resolved'.
+    """
+    # check if inquiry is empty
+    # SET status = 'resolved'
+    # resolved_at = datetime.now()
+    # only resolve at task if its assigned
+    
+    # first layer -> check if inquiry_id does not exists
+    if not inquiry_id:
+        return jsonify({
+            "message": "inquiry does not exists. failed to update."
+        }), 400
+    
+    # second layer -> check if inquiry_id exists in the database and if the task is assigned to the current agent.
     res = run_query("""
-                       INSERT INTO inquiries
-                       (user_id, agent_id, vehicle_id, guest_name, guest_email, guest_number, message)
-                       VALUES 
-                       (%s,%s,%s,%s,%s,%s,%s)
-                       """,
-                       (user_id, agent_id,vehicle_id,guest_name, guest_email,guest_number, message))
-    
-    # always log the inquiry
-    audit_log(session["user"], "POST", "inquiries", res)
-    
-    # take aways: once the agent assigned the task on them, it should be logged.
-    if not res: 
-        return jsonify({"message": "inquiries not sent successfully!"} ), 400
-    
-    return jsonify({"message": "inquiries sent successfully!"}), 200
+                    SELECT * FROM inquiries 
+                    WHERE inquiry_id = %s AND agent_id = %s
+                    """,
+                    (inquiry_id,session["user"]),
+                    fetch="one")
 
-# GET -> logged in required, role_required("agent")
-def get_inquiries():
-    role = session["role"]
-    res = None
-
-    if role == "admin":
-        res = run_query("""
-                        SELECT * FROM inquiries
-                        """,
-                        fetch="all")
-    else:
-        res = run_query("""
-                SELECT * FROM inquiries
-                WHERE status = 'open'
-                """,
-                fetch="all")
-    
+    agent_assigned_inquiries = run_query("""
+                                         SELECT * FROM inquiries WHERE agent_id = %s AND status = 'assigned'
+                                         """,
+                                         (session["user"],),
+                                         fetch="all")
     if not res:
-        return jsonify({"data": []}), 200
+        return jsonify({
+            "message": "inquiry does not exists.",
+        }), 400
 
-    return jsonify({"data": res}), 200
+    if res["status"] == "resolved":
+        return jsonify({
+            "message": "task already marked as resolved.",
+            "available_tasks": agent_assigned_inquiries
+        }), 400
+    # if it does exist, get the old value
+    old_value = res["status"]
+        
+    run_query("""
+              UPDATE inquiries SET status = %s, resolved_at = %s
+              WHERE inquiry_id = %s
+              """,
+              ('resolved',datetime.now(),inquiry_id))
+
+    audit_log(
+        session["user"],
+        "PUT",
+        "inquiries",
+        res["inquiry_id"],
+        json.dumps(old_value, default=str),
+        json.dumps({"status": "resolved"}, default=str)
+    )
+
+    return jsonify({
+        "message": "task marked as resolved."
+    })
+
+# admin
+def displayInquiries():
+    """
+    SALES AGENT | ADMIN PORTAL
+    
+        This function returns the inquiries based on the type of user ['admin','agent']
+        
+        admin can access the search and filter, and he can all see the inquiries,
+        agent can only view inquiries with STATUS = 'open'.
+    """
+    conditions = []
+    values = []
+    role = session["role"]
+    params = {
+        "status": request.args.get("status"),
+        "agent_id": request.args.get("agent_id")
+    }
+
+    if params.get("status"):
+        conditions.append("i.status LIKE %s")
+        values.append(f"%{params['status']}%")
+
+    if params.get("agent_id"):
+        conditions.append("i.agent_id = %s")
+        values.append(params["agent_id"])
+
+    search = ""
+
+    if conditions:
+        search = "WHERE " + " AND ".join(conditions)
+    
+    query = ""
+    
+    if role == "admin":
+        query = f"""
+            SELECT
+                i.user_id,
+
+                CASE
+                    WHEN i.user_id IS NOT NULL THEN up.full_name
+                    ELSE i.guest_name
+                END AS name,
+
+                CASE
+                    WHEN i.user_id IS NOT NULL THEN up.phone_number
+                    ELSE i.guest_number
+                END AS contact_number,
+
+                CASE
+                    WHEN i.user_id IS NOT NULL THEN u.email
+                    ELSE i.guest_email
+                END AS email,
+
+                v.vehicle_id,
+                v.brand,
+                v.model,
+                v.price,
+
+                i.message,
+                i.status,
+                i.agent_id,
+                i.inquiry_id
+
+            FROM inquiries i
+
+            JOIN vehicles v
+                ON i.vehicle_id = v.vehicle_id
+
+            LEFT JOIN user_profile up
+                ON i.user_id = up.user_id
+            
+            LEFT JOIN users u
+                ON i.user_id = u.user_id
+
+            {search}
+        """
+    else:
+        query = f"""
+            SELECT
+                i.user_id,
+
+                CASE
+                    WHEN i.user_id IS NOT NULL THEN up.full_name
+                    ELSE i.guest_name
+                END AS name,
+
+                CASE
+                    WHEN i.user_id IS NOT NULL THEN up.phone_number
+                    ELSE i.guest_number
+                END AS contact_number,
+
+                CASE
+                    WHEN i.user_id IS NOT NULL THEN u.email
+                    ELSE i.guest_email
+                END AS email,
+
+                v.vehicle_id,
+                v.brand,
+                v.model,
+                v.price,
+
+                i.message,
+                i.status,
+                i.agent_id,
+                i.inquiry_id
+
+            FROM inquiries i
+
+            JOIN vehicles v
+                ON i.vehicle_id = v.vehicle_id
+
+            LEFT JOIN user_profile up
+                ON i.user_id = up.user_id
+            
+            LEFT JOIN users u
+                ON i.user_id = u.user_id
+
+            WHERE i.status = 'open'
+        """
         
 
-# GET specific inquiry ->  logged in required, role_required("agent", "admin")
-def get_inquiry_details(id):
-    role = session["role"]
-    res = None
-    
-    if role == "admin":
-        res = run_query("""
-                        SELECT * FROM inquiries 
-                        WHERE inquiry_id = %s
-                        """,
-                        (id, ),
-                        fetch="one")
-    else:
-        res = run_query("""
-                SELECT * FROM inquiries 
-                WHERE status = 'open' AND inquiry_id = %s
-                """,
-                (id, ),
-                fetch="one")
+    res = run_query(query, tuple(values), fetch="all")
 
     if not res:
-        return jsonify({"message": "no data found."}), 404
+        return jsonify({"message": "No available tasks today, keep up the good work!"})
 
-    return jsonify({"data": res}), 200
+    formatted_response = []
 
-# update specific inquiry -> protected route
-def update_inquiry(id):
-    # agent can only update their assigned inquiry
-    role = session.get("role")
-    session_user = session.get("user")
+    for row in res:
 
-    if role == "agent":
-        inquiry = run_query(
-            """
-            SELECT inquiry_id
-            FROM inquiries
-            WHERE inquiry_id = %s AND agent_id = %s
-            """,
-            (id, session_user),
-            fetch="one"
-        )
-        if not inquiry:
-            return jsonify({"message": "inquiry not found or access denied."}), 403
+        is_guest = row["user_id"] is None
 
-    existing = run_query(
-        "SELECT inquiry_id FROM inquiries WHERE inquiry_id = %s",
-        (id,),
-        fetch="one"
-    )
-    if not existing:
-        return jsonify({"message": "inquiry not found."}), 404
+        user_type = ""
 
-    resolved_at = datetime.now()
+        if is_guest:
+            user_type = "guest"
+        else:
+            user_type = "customer"
 
+        formatted_response.append({
+            "inquiry_id": row["inquiry_id"],
+            "message": row["message"],
+            "status": row["status"],
+            "agent_assigned": row["agent_id"],
+            "user_type": user_type,
+            "contacts": {
+                "name": row["name"],
+                "email": row["email"],
+                "number": row["contact_number"]
+            },
+            "vehicle": {
+                "id": row["vehicle_id"],
+                "brand": row["brand"],
+                "model": row["model"],
+                "price": f"₱{row['price']}"
+            }
+        })
+
+    return jsonify(formatted_response), 200
+
+def closeInquiry(inquiry_id):
+    """
+        ADMIN PORTAL
+        
+        this function closes an inquiry.
+    """
+    
+    if not inquiry_id:
+        return jsonify({
+            "message": "inquiry_id is required."
+        }), 400
+    
     res = run_query(
         """
-        UPDATE inquiries
-        SET resolved_at = %s, status = %s
-        WHERE inquiry_id = %s
+            SELECT * FROM inquiries 
+            WHERE inquiry_id = %s AND status = 'resolved'
         """,
-        (resolved_at, "resolved", id)
+        (inquiry_id,),
+        fetch="one"
     )
     
     if not res:
-        return jsonify({"message": "action failed."}), 400    
-
-    return jsonify({"message": "marked as resolved."}), 200
-
-# create a handler when the agent successfully assists the customer -> then the resolved_at = current time.
-
-
+        return jsonify({
+            "message": "inquiry not found or not marked 'resolved'."
+        }), 400
+        
+    # PASSED CHECKS
+    
+    # store the old value
+    old_value = res["status"]
+    
+    # set inquiry status to 'closed'
+    run_query("""
+              UPDATE inquiries SET status = 'closed' 
+              WHERE inquiry_id = %s 
+              """,
+              (inquiry_id,))
+    
+    audit_log(
+        session["user"],
+        "PUT",
+        "inquiries",
+        res["inquiry_id"],
+        json.dumps(old_value, default=str),
+        json.dumps({"status": "closed"}, default=str)
+    )
+    
+    return jsonify({
+        "message": "inquiry marked as 'closed'."
+    }), 200
