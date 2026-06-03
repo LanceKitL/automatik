@@ -59,24 +59,10 @@ def submitInquiry(): # -> POST
                   (user,vehicle_id,message,'open'))
         
         audit_log(
-<<<<<<< HEAD
             id=res["user_id"], 
             action="POST", 
             tablename="inquiries", 
             record_id=res
-=======
-            id=user,
-            action="POST",
-            tablename="inquiries",
-            record_id=res,
-            new_value=json.dumps({
-                "user_id": user,
-                "vehicle_id": vehicle_id,
-                "message": message,
-                "status": "open"
-                },
-                default=str)
->>>>>>> feature/web_socket
             )
 
         fire_notif(
