@@ -154,7 +154,7 @@ def updateScheduleStatus(schedule_id):
     """, (schedule_id,), fetch="one")
 
     if not schedule:
-        return jsonify({"message": f"Schedule not found!"}), 404
+        return jsonify({"message": "Schedule not found!"}), 404
 
     run_query("""
         UPDATE amortization_schedule SET status=%s WHERE schedule_id = %s
