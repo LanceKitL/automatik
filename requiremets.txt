@@ -2,9 +2,17 @@ flask
 flask_cors
 mysql-connector-python
 openai
+<<<<<<< HEAD
 python-dotenv
+<<<<<<< HEAD
 flask_mail
 flask-socketio
 langchain
 lanchain-core
 langchain-nvidia-ai-endpoints
+=======
+=======
+dotenv
+>>>>>>> 2f24da0 (added email service / verification)
+flask_mail
+>>>>>>> 36bf98c (customer_portal)

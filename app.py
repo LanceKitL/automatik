@@ -1,15 +1,29 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+<<<<<<< HEAD
 from validators.middleware import role_required, logged_in_required
 from conn import run_query
 
+=======
+<<<<<<< HEAD
+>>>>>>> 36bf98c (customer_portal)
 from flask import Flask, jsonify, render_template
 from services.mail_service import init_mail
 from datetime import timedelta
 from flask_cors import CORS
 from config import MailConfig
+<<<<<<< HEAD
 from utils.socket_handler import socketio
+=======
+=======
+from flask import Flask, jsonify
+from datetime import timedelta
+from flask_cors import CORS
+from config import MailConfig
+from services.mail_service import init_mail
+>>>>>>> 2f24da0 (added email service / verification)
+>>>>>>> 36bf98c (customer_portal)
 import os
 
 #routes

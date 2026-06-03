@@ -1,11 +1,24 @@
 from werkzeug.security import check_password_hash, generate_password_hash
 from utils.token_helper import EmailVerificationToken
+<<<<<<< HEAD
 from flask import session, jsonify, request, render_template, abort
+=======
+<<<<<<< HEAD
+from flask import session, jsonify, request, render_template, abort, flash
+>>>>>>> 36bf98c (customer_portal)
 from services.mail_service import send_email_verification, welcome_user
 from datetime import datetime, timezone
 from conn import run_query, get_db, Error
 from utils.log import audit_log, get_local_ip
 import hashlib
+=======
+from services.mail_service import send_email_verification
+from flask import session, jsonify, request
+from datetime import datetime, timezone
+import hashlib
+from utils.log import audit_log
+from conn import run_query
+>>>>>>> 2f24da0 (added email service / verification)
 import random
 import string
 
@@ -226,6 +239,7 @@ def AgentAccountHandler():
         if not result:
             return jsonify({"message": "Agent Account Creation Failed."}), 500
 
+<<<<<<< HEAD
         # for user_profile -> full name is the only not nullable
         run_query("""
                 INSERT INTO user_profile (user_id, full_name) VALUES (%s,%s) 
@@ -235,6 +249,23 @@ def AgentAccountHandler():
                  ),
                  conn=conn,
                  cursor=cursor)
+=======
+    # create agent details too T-T
+    run_query("""
+              INSERT INTO agent_details (user_id, employee_number) VALUES (%s,%s)
+              """,
+              (result, f"EMP-{datetime.now().year}-{result}"))
+    
+    token = EmailVerificationToken(result)
+
+    if not token:
+        return jsonify({"message": "Token generation failed."}), 400
+
+    
+    link = f"http://127.0.0.1:5000/auth/verify?token_id={token["token_id"]}&token={token["token_hash"]}"
+    send_email_verification(email,full_name.split(" ")[0], link)
+
+>>>>>>> 2f24da0 (added email service / verification)
 
         # create agent details too T-T
         run_query("""
@@ -257,6 +288,7 @@ def AgentAccountHandler():
         #print("raw_token", token["raw_token"]) # for endpoint testing || delete this before pushing
         send_email_verification(email,full_name.split(" ")[0], link)
 
+<<<<<<< HEAD
 
         # log the creation of user
         audit_log(
@@ -284,6 +316,8 @@ def AgentAccountHandler():
         cursor.close()
         conn.close()
 
+=======
+>>>>>>> 2f24da0 (added email service / verification)
 def changePassword():
     """
         [LOGIN REQUIRED]
@@ -375,6 +409,7 @@ def resendVerification(email):
 
 def verifyEmail():
     token_id = request.args.get("token_id")
+<<<<<<< HEAD
     raw_token = request.args.get("raw_token")
 
     response = run_query("""
@@ -423,6 +458,34 @@ def verifyEmail():
     # update the token
     run_query("""
               UPDATE access_tokens
+=======
+    raw_token = request.args.get("token")
+
+    response = run_query("""
+                         SELECT * FROM access_token WHERE token_id = %s AND token_type = 'email_verify'
+                         """,
+                         (token_id,),
+                         fetch="one")
+    if response is None:
+        return jsonify({"message": "Invalid Token."}), 400
+    
+    # expiry check
+    now = datetime.now(timezone.utc)
+    if response["expires_at"].replace(tzinfo=timezone.utc) < now:
+        return jsonify({"message": "Token Expired."}), 400
+    
+    if response["used_at"] is not None:
+        return jsonify({"message": "Token already used."}), 400
+    
+    #hash 
+    incoming_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    if incoming_hash != response["token_hash"]:
+        return jsonify({"message": "Invalid token."}), 400
+
+    # update the token
+    run_query("""
+              UPDATE access_token
+>>>>>>> 2f24da0 (added email service / verification)
               SET used_at = %s
               WHERE token_id =%s
               """,
@@ -434,8 +497,13 @@ def verifyEmail():
             WHERE user_id =%s
             """,
             (response["user_id"],))
+<<<<<<< HEAD
     
     welcome_user(user["email"], 'email/welcome.html')  
     
     return render_template('email_verification_ok.html')
     
+=======
+
+    return jsonify({"message": "verification successful!"}), 200
+>>>>>>> 2f24da0 (added email service / verification)
