@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+  .container { max-width: 600px; margin: 24px auto; background: #ffffff; border-radius: 8px; overflow: hidden; }
+  .header { background: #8b4513; padding: 24px; text-align: center; }
+  .header h1 { color: #ffffff; margin: 0; font-size: 22px; }
+  .body { padding: 24px; }
+  .body p { color: #333; line-height: 1.6; margin: 8px 0; }
+  .label { font-weight: bold; color: #555; }
+  .value { color: #8b4513; }
+  .footer { background: #f4f4f4; padding: 16px 24px; text-align: center; font-size: 12px; color: #888; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>New Warranty Claim</h1>
+  </div>
+  <div class="body">
+    <p>A customer has submitted a new warranty claim through the portal.</p>
+    <p><span class="label">Customer ID:</span> <span class="value">{{ customer_id }}</span></p>
+    <p><span class="label">Claim Type:</span> <span class="value">{{ claim_type | capitalize }}</span></p>
+    <p><span class="label">Vehicle:</span> <span class="value">{{ vehicle_name }}</span></p>
+    <p><span class="label">Description:</span></p>
+    <p class="value">{{ description }}</p>
+    <p style="margin-top: 16px;">
+      <a href="{{ claim_url }}" style="display: inline-block; background: #8b4513; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 4px;">View Claim</a>
+    </p>
+  </div>
+  <div class="footer">
+    <p>AutoMatik &mdash; Customer Portal Notification</p>
+  </div>
+</div>
+</body>
+</html>
