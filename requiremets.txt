@@ -3,6 +3,7 @@ flask_cors
 mysql-connector-python
 openai
 <<<<<<< HEAD
+<<<<<<< HEAD
 python-dotenv
 <<<<<<< HEAD
 flask_mail
@@ -16,3 +17,7 @@ dotenv
 >>>>>>> 2f24da0 (added email service / verification)
 flask_mail
 >>>>>>> 36bf98c (customer_portal)
+=======
+python-dotenv
+flask_mail
+>>>>>>> refs/remotes/origin/feature/customer-portal-api

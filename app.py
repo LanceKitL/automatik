@@ -1,14 +1,20 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+<<<<<<< HEAD
 from validators.middleware import role_required, logged_in_required
 from conn import run_query
+=======
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
 from flask import Flask, jsonify, render_template
 from services.mail_service import init_mail
 from datetime import timedelta
 from flask_cors import CORS
 from config import MailConfig
+<<<<<<< HEAD
 from utils.socket_handler import socketio
+=======
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
 import os
 
 #routes
@@ -40,7 +46,10 @@ app.secret_key = session_secret
 
 app.config.from_object(MailConfig)
 init_mail(app)
+<<<<<<< HEAD
 socketio.init_app(app)
+=======
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
 
 #routes
 app.register_blueprint(admin_bp, url_prefix="/admin")

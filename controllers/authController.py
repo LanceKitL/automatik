@@ -2,6 +2,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from utils.token_helper import EmailVerificationToken
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 from flask import session, jsonify, request, render_template, abort
 =======
 <<<<<<< HEAD
@@ -12,11 +13,15 @@ from flask import session, jsonify, request, render_template, abort
 >>>>>>> fe4172f (completed the email_verification, designed email response and dynamic IP binding)
 from flask import session, jsonify, request, render_template, abort, flash
 >>>>>>> 36bf98c (customer_portal)
+=======
+from flask import session, jsonify, request, render_template, abort, flash
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
 from services.mail_service import send_email_verification, welcome_user
 from datetime import datetime, timezone
 from conn import run_query, get_db, Error
 from utils.log import audit_log, get_local_ip
 import hashlib
+<<<<<<< HEAD
 =======
 from services.mail_service import send_email_verification
 from flask import session, jsonify, request
@@ -25,6 +30,8 @@ import hashlib
 from utils.log import audit_log
 from conn import run_query
 >>>>>>> 2f24da0 (added email service / verification)
+=======
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
 import random
 import string
 
@@ -168,7 +175,11 @@ def customerAccountHandler():
               """,
               (res, f"CUST-{datetime.now().year}-{res}"))
 
+<<<<<<< HEAD
     audit_log(
+=======
+    audit = audit_log(
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
         session["user"],
         "POST", 
         "customer", 
@@ -246,6 +257,9 @@ def AgentAccountHandler():
             return jsonify({"message": "Agent Account Creation Failed."}), 500
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
         # for user_profile -> full name is the only not nullable
         run_query("""
                 INSERT INTO user_profile (user_id, full_name) VALUES (%s,%s) 
@@ -255,6 +269,7 @@ def AgentAccountHandler():
                  ),
                  conn=conn,
                  cursor=cursor)
+<<<<<<< HEAD
 =======
     # create agent details too T-T
     run_query("""
@@ -266,12 +281,63 @@ def AgentAccountHandler():
 
     if not token:
         return jsonify({"message": "Token generation failed."}), 400
+=======
+
+        # create agent details too T-T
+        run_query("""
+                INSERT INTO agent_details (user_id, employee_number) VALUES (%s,%s)
+                """,
+                (result, f"EMP-{datetime.now().year}-{result}"),
+                conn=conn,
+                cursor=cursor)
+        
+        token = EmailVerificationToken(result,conn=conn,cursor=cursor)
+
+        if not token:
+            return jsonify({"message": "Token generation failed."}), 400
+
+        # if everything is success
+
+        # prepare the link dedicated for 'verifyEmail' function
+        link = f"http://{get_local_ip()}:5000/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}"
+        #print("token_id", token["token_id"]) # ENDPOINT TESTING
+        #print("raw_token", token["raw_token"]) # for endpoint testing || delete this before pushing
+        send_email_verification(email,full_name.split(" ")[0], link)
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
 
     
     link = f"http://127.0.0.1:5000/auth/verify?token_id={token["token_id"]}&token={token["token_hash"]}"
     send_email_verification(email,full_name.split(" ")[0], link)
 
+<<<<<<< HEAD
 >>>>>>> 2f24da0 (added email service / verification)
+=======
+        # log the creation of user
+        audit_log(
+            session["user"], 
+            "POST", 
+            "users, access_tokens, agent_details",
+            result,
+            conn=conn,
+            cursor=cursor
+            )
+        
+        conn.commit()
+        return jsonify({
+            "message": "Agent Account Created Successfully!",
+            "note": f"Email verification sent to {email}"
+            }), 201
+
+    except Error as e:
+        conn.rollback()
+        return jsonify({
+            "message": "Transaction Failed.",
+            "error": str(e)
+        }), 500
+    finally:
+        cursor.close()
+        conn.close()
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
 
         # create agent details too T-T
         run_query("""
@@ -387,6 +453,7 @@ def logoutHandler():
 
 
 def resendVerification(email):
+<<<<<<< HEAD
     # Return JSON instead of HTML for API consistency
     if not email:
         return jsonify({"message": "Email is required."}), 400
@@ -394,10 +461,23 @@ def resendVerification(email):
     user_row = run_query("""
                         SELECT user_id FROM users 
                         WHERE email = %s
+=======
+    #generates new token and a link to send
+    if not email:
+        abort(403)
+    
+    # first -> get the user with the that email
+    # verify if there's actually a user with that email
+    # use the user_id for generating new token
+    user_id = run_query("""
+                        SELECT user_id FROM users 
+                        WHERE email =%s
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
                         """,
                         (email,),
                         fetch="one")
 
+<<<<<<< HEAD
     if not user_row:
         return jsonify({"message": "User with that email not found."}), 404
 
@@ -411,11 +491,31 @@ def resendVerification(email):
     send_email_verification(email, email.split('@')[0], link)
 
     return jsonify({"message": "Verification email resent successfully."}), 200
+=======
+    if not user_id:
+        abort(404) 
+        
+    token = EmailVerificationToken(user_id)
+    
+    if not token:
+        abort(500)
+    
+    link = f"http://{get_local_ip()}:5000/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}"
+
+    send_email_verification(email,email.split('@')[0],link)
+    
+    flash("Verification email has been resent successfully.", "success")
+    
+    return render_template('email_verification_error.html')
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
     
 
 def verifyEmail():
     token_id = request.args.get("token_id")
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
     raw_token = request.args.get("raw_token")
 
     response = run_query("""
@@ -458,6 +558,9 @@ def verifyEmail():
         abort(403)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
     incoming_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     if incoming_hash != response["token_hash"]:
         abort(403)
@@ -465,6 +568,7 @@ def verifyEmail():
     # update the token
     run_query("""
               UPDATE access_tokens
+<<<<<<< HEAD
 =======
     raw_token = request.args.get("token")
 
@@ -495,6 +599,8 @@ def verifyEmail():
     run_query("""
               UPDATE access_token
 >>>>>>> 2f24da0 (added email service / verification)
+=======
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
               SET used_at = %s
               WHERE token_id =%s
               """,
@@ -508,12 +614,16 @@ def verifyEmail():
             (response["user_id"],))
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> f27b11c (completed the email_verification, designed email response and dynamic IP binding)
+=======
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
     
     welcome_user(user["email"], 'email/welcome.html')  
     
     return render_template('email_verification_ok.html')
+<<<<<<< HEAD
 <<<<<<< HEAD
     
 =======
@@ -523,3 +633,6 @@ def verifyEmail():
 =======
     
 >>>>>>> f27b11c (completed the email_verification, designed email response and dynamic IP binding)
+=======
+    
+>>>>>>> refs/remotes/origin/feature/customer-portal-api
