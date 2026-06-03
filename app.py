@@ -19,7 +19,11 @@ from routes.vehicles import vehicles_bp
 from routes.inquiries import inquiry_bp
 from routes.supplier import supplier_bp
 from routes.profile import profile_bp
+<<<<<<< HEAD
 from routes.notification import notif_bp
+=======
+from routes.customerportal import customerportal_bp
+>>>>>>> 86b1ab3 (Adding customer portal API endpoints)
 
 app = Flask(__name__)
 
@@ -50,7 +54,11 @@ app.register_blueprint(vehicles_bp, url_prefix="/vehicle")
 app.register_blueprint(inquiry_bp, url_prefix="/inquiry")
 app.register_blueprint(supplier_bp, url_prefix="/supplier")
 app.register_blueprint(profile_bp, url_prefix="/profile")
+<<<<<<< HEAD
 app.register_blueprint(notif_bp, url_prefix="/notification")
+=======
+app.register_blueprint(customerportal_bp, url_prefix="/portal")
+>>>>>>> 86b1ab3 (Adding customer portal API endpoints)
 
 #404 not found page
 @app.errorhandler(404)
