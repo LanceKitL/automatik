@@ -1,0 +1,920 @@
+================================================================================
+                      AUTOMATIK — SYSTEM REQUIREMENTS & API DATA
+================================================================================
+  Integrated Web-Based Car Dealership and Management System
+  Polytechnic University of the Philippines | 2025-2026
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+  A.  System Requirements (Prerequisites & Dependencies)
+  B.  Environment Configuration
+  C.  Roles & Permissions Overview
+  D.  Database Schema Reference (20 Tables)
+  E.  API Endpoint Reference by Module
+      1.  Authentication & Session Management
+      2.  Users & Profiles
+      3.  Vehicles & Inventory
+      4.  Inquiries & Chatbot
+      5.  Sales & Contracts
+      6.  Financing: Loans & Amortization
+      7.  Payments
+      8.  Agent Module
+      9.  Customer Portal
+      10. Service Bookings & Slots
+      11. Warranty Claims
+      12. Documents
+      13. Suppliers & Supplies
+      14. Notifications
+      15. Audit Logs
+      16. System Settings
+  F.  Frontend Data Display Reference (JOINs & Key Fields)
+  G.  HTTP Status Code Reference
+  H.  Input Validation Rules
+
+
+================================================================================
+A.  SYSTEM REQUIREMENTS
+================================================================================
+
+  A.1  Prerequisites
+  ~~~~~~~~~~~~~~~~~~
+    Component      Version      Notes
+    -----------    ----------   -----------------------------------------------
+    Python         3.10+        Backend runtime
+    Node.js        18+          Frontend build & dev server
+    MySQL          8.0+         Database (MariaDB 10.4+ also compatible)
+    Git            any          Version control
+
+  A.2  Backend Python Dependencies
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Package                     Purpose
+    -------------------------   -----------------------------------------------
+    flask                       Web framework
+    flask-cors                  Cross-Origin Resource Sharing
+    mysql-connector-python      MySQL database driver (official Oracle)
+    openai                      AI chatbot integration
+    python-dotenv               .env file loader
+    flask-mail                  Email sending (SMTP)
+    flask-socketio              WebSocket / real-time notifications
+    langchain                   LLM framework for chatbot
+    langchain-core              Core LangChain abstractions
+    langchain-nvidia-ai-endpts NVIDIA AI endpoint integration
+    bcrypt / flask-bcrypt       Password hashing (used in API_FLOW.md)
+    flask-limiter               Rate limiting (auth routes)
+    flask-wtf                   CSRF protection
+    python-dateutil             Date arithmetic (amortization schedule)
+    gunicorn                    (recommended) Production WSGI server
+
+  A.3  Frontend Dependencies (anticipated, from README)
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Framework:  React / Vue / Svelte (TBD — README states "under development")
+    Build tool: Vite (dev server on port 5173)
+
+    Likely packages needed:
+      axios or fetch          HTTP client
+      react-router-dom        Client-side routing (if React)
+      chart.js or recharts    Dashboard charts
+      date-fns / dayjs        Date formatting
+      tailwindcss / bootstrap UI framework
+
+
+================================================================================
+B.  ENVIRONMENT CONFIGURATION
+================================================================================
+
+  B.1  Required Environment Variables (backend/.env)
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Variable               Default          Description
+    ---------------------  ---------------  -----------------------------------
+    SESSION_SECRET         (required)       Flask session signing key
+    FLASK_DEBUG            1                Enable debug mode (0 in production)
+    MAIL_SERVER            smtp.gmail.com   SMTP host for email
+    MAIL_PORT              587              SMTP port
+    MAIL_USE_TLS           True             TLS for SMTP
+    MAIL_USERNAME          (ask team)       SMTP login
+    MAIL_PASSWORD          (ask team)       SMTP password
+    DB_HOST                localhost        MySQL host
+    DB_PORT                3306             MySQL port
+    DB_NAME                automatik        MySQL database name
+    DB_USER                root             MySQL user
+    DB_PASSWORD            (set yours)      MySQL password
+    OPENAI_API_KEY         (optional)       OpenAI key (if using OpenAI chatbot)
+
+  B.2  Flask Session Security (from config.py / app.py)
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Setting                        Value
+    -----------------------------  ----------------------------
+    SESSION_COOKIE_HTTPONLY        True
+    SESSION_COOKIE_SAMESITE        Lax
+    SESSION_COOKIE_SECURE          True (prod) / False (dev)
+    PERMANENT_SESSION_LIFETIME     30 minutes
+    SESSION_REFRESH_EACH_REQUEST   True
+    SECRET_KEY                     SESSION_SECRET env var
+
+
+================================================================================
+C.  ROLES & PERMISSIONS OVERVIEW
+================================================================================
+
+  Role        Description                                          Access
+  ----------- ---------------------------------------------------  ---------------
+  PUBLIC      Unauthenticated visitors                             Browse vehicles,
+  (Guest)                                                          submit inquiries,
+                                                                   use chatbot
+  CUSTOMER    Registered, logged-in customers                      Own sales, loans,
+                                                                   payments, documents,
+                                                                   service bookings,
+                                                                   warranty claims
+  AGENT       Sales staff                                          Assigned inquiries,
+                                                                   tasks, commissions,
+                                                                   own dashboard
+  ADMIN       Full system control                                  All CRUD: users,
+                                                                   vehicles, sales,
+                                                                   settings, reports
+
+
+================================================================================
+D.  DATABASE SCHEMA REFERENCE (20 Tables)
+================================================================================
+
+  Table                    Primary Key          Key Fields (for frontend display)
+  -----------------------  -------------------  -----------------------------------------------
+  users                    user_id (INT)        username, email, role, is_active, email_verified
+  user_profile             user_id (FK→users)   full_name, phone_number, address, city,
+                                                province, zip_code, profile_picture_url
+  customer_details         user_id (FK→users)   customer_number, preferred_contact_method,
+                                                preferred_payment_method, notes
+  agent_details            user_id (FK→users)   employee_number, hire_date,
+                                                default_commission_rate
+  access_tokens            token_id (VARCHAR)   token_hash, token_type, expires_at, used_at
+  vehicles                 vehicle_id (INT)     vin, brand, model, year, color, body_type,
+                                                transmission, fuel_type, price, status,
+                                                specs_json (JSON)
+  vehicle_photos           photo_id (INT)       photo_url, sort_order
+  suppliers                supplier_id (INT)    company_name, contact_name, contact_email,
+                                                contact_phone, is_active
+  supplies                 supply_id (INT)      part_name, part_number, unit_cost, stock_qty,
+                                                reorder_level
+  inquiries                inquiry_id (INT)     guest_name, guest_email, message, status,
+                                                created_at, resolved_at
+  chatbot_logs             log_id (INT)         session_id, user_message, bot_response,
+                                                intent_tag
+  sales                    sale_id (INT)        selling_price, payment_type, sale_date, status
+  sales_contracts          contract_id (INT)    contract_url, status (draft/pending_signature/
+                                                signed/cancelled), signed_at
+  loan_details             loan_id (INT)        down_payment, loan_amount, interest_rate,
+                                                term_months, monthly_amortization,
+                                                bank_approval_status
+  amortization_schedule    schedule_id (INT)    month_number, due_date, principal, interest,
+                                                total_due, running_balance, status
+  payments                 payment_id (INT)     amount_paid, payment_date, payment_method,
+                                                reference
+  insurance_records        insurance_id (INT)   provider_name, policy_number, coverage_type,
+                                                start_date, end_date, status
+  service_slots            slot_id (INT)        slot_datetime, slot_type, capacity, is_available
+  service_bookings         booking_id (INT)     booking_type, notes, status
+  warranty_claims          claim_id (INT)       claim_type, description, status, resolution
+  documents                document_id (INT)    document_type, file_url, is_accessible
+  notifications            notification_id (INT) title, message, channel, ref_type, ref_id,
+                                                 is_read
+  audit_logs               log_id (INT)         action, table_name, record_id, old_value,
+                                                new_value, ip_address
+  agent_commissions        commission_id (INT)  rate_applied, commission_amount, is_paid,
+                                                paid_at
+  agent_tasks              task_id (INT)        task_type, title, due_date, status, notes
+  system_settings          setting_id (INT)     setting_key, setting_value, description
+
+
+================================================================================
+E.  API ENDPOINT REFERENCE BY MODULE
+================================================================================
+
+  Notation:
+    [PUB] = Public access (no auth required)
+    [USR] = Any authenticated user
+    [CUS] = Customer role only
+    [AGT] = Agent role only
+    [ADM] = Admin role only
+
+----------------------------------------------------------------------
+E.1  AUTHENTICATION & SESSION MANAGEMENT
+----------------------------------------------------------------------
+
+  Tables: users, access_tokens, user_profile
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  POST    /auth/register                 [PUB]    Register new customer account.
+                                                  Returns 201 on success.
+                                                  Body: email, password, confirm_password,
+                                                  full_name, phone
+  POST    /auth/login                    [PUB]    Login with email + password.
+                                                  Creates Flask session.
+                                                  Returns user data on 200.
+  POST    /auth/logout                   [USR]    Clear session. Returns 200 + redirect URL.
+  GET     /auth/me                       [USR]    Current user profile + role info.
+                                                  Returns user + profile fields (safe).
+  POST    /auth/verify-email             [PUB]    Verify email via token from email link.
+                                                  Query: ?token=<uuid>
+  POST    /auth/forgot-password          [PUB]    Request password reset email.
+                                                  Rate limited: 3/hr per IP.
+  POST    /auth/reset-password           [PUB]    Reset password using token.
+                                                  Body: token, password, confirm_password
+  POST    /auth/resend-verify            [PUB]    Resend verification email.
+                                                  Rate limited: 3/hr per IP.
+  GET     /portal/access                 [PUB]    Magic-link login for customers.
+                                                  Query: ?token=<uuid> → 302 redirect.
+
+  <Frontend Data:>
+    GET /auth/me Response:
+    {
+      "user_id": 1,
+      "username": "cust_pedro",
+      "email": "pedro.garcia@gmail.com",
+      "role": "customer",
+      "email_verified": true,
+      "is_active": true,
+      "profile": {
+        "full_name": "Pedro Garcia",
+        "phone_number": "09201234570",
+        "address": "12 Sampaguita St",
+        "city": "Pasig",
+        "province": "Metro Manila",
+        "profile_picture_url": null
+      }
+    }
+
+----------------------------------------------------------------------
+E.2  USERS & PROFILES
+----------------------------------------------------------------------
+
+  Tables: users, user_profile, customer_details, agent_details
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /admin/users                   [ADM]    List all users. Filter: ?role=, ?is_active=,
+                                                  ?search=. Paginate: ?page=&per_page=.
+  GET     /admin/users/<id>              [ADM]    Single user + role-specific details.
+  POST    /admin/users                   [ADM]    Create user (multi-table INSERT).
+  PUT     /admin/users/<id>              [ADM]    Update user. Cannot change own role.
+  DELETE  /admin/users/<id>              [ADM]    Soft delete (is_active=0).
+  GET     /profile                       [USR]    Own profile (users + user_profile).
+  PUT     /profile                       [USR]    Update own profile (user_profile only).
+  PUT     /profile/password              [USR]    Change password (old + new).
+  GET     /admin/agents                  [ADM]    List agents + agent_details.
+  POST    /admin/agents                  [ADM]    Create agent user.
+  PUT     /admin/agents/<id>             [ADM]    Update agent commission_rate, hire_date.
+  GET     /admin/customers               [ADM]    List customers + customer_details.
+  GET     /admin/customers/<id>          [ADM]    Customer detail + sales history.
+  PUT     /admin/customers/<id>          [ADM]    Update customer_details.
+
+  <Frontend Data:>
+    /admin/users response array item:
+    {
+      "user_id": 1,
+      "username": "admin_jose",
+      "email": "jose.admin@automatik.ph",
+      "role": "admin",
+      "is_active": true,
+      "email_verified": true,
+      "last_login": null,
+      "created_at": "2026-04-19 08:40:18",
+      "profile": {
+        "full_name": "Jose Ramirez",
+        "phone_number": "09171234567",
+        "address": "123 Rizal St",
+        "city": "Manila",
+        "province": "Metro Manila"
+      }
+    }
+
+----------------------------------------------------------------------
+E.3  VEHICLES & INVENTORY
+----------------------------------------------------------------------
+
+  Tables: vehicles, vehicle_photos, suppliers
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /vehicles                      [PUB]    List vehicles. Filter: brand, model,
+                                                  fuel_type, status, price_min, price_max.
+                                                  Includes first photo. Paginated.
+  GET     /vehicles/<id>                 [PUB]    Vehicle detail + all photos (ordered) +
+                                                  supplier info.
+  POST    /admin/vehicles                [ADM]    Add vehicle. Status enum: available,
+                                                  reserved, discontinued, delivered.
+  PUT     /admin/vehicles/<id>           [ADM]    Update vehicle fields.
+  DELETE  /admin/vehicles/<id>           [ADM]    Set status=discontinued if no active sales.
+  POST    /admin/vehicles/<id>/photos    [ADM]    Add photo (URL + sort_order).
+  DELETE  /admin/vehicles/<id>/photos/   [ADM]    Remove photo.
+          <pid>
+  PUT     /admin/vehicles/<id>/status    [ADM]    Manual status override (validated).
+  GET     /admin/vehicles/low-stock      [ADM]    Vehicles compared to low_stock_threshold.
+
+  <Frontend Data:>
+    GET /vehicles list item:
+    {
+      "vehicle_id": 1,
+      "brand": "Toyota",
+      "model": "Fortuner GR Sport",
+      "year": 2025,
+      "color": "Phantom Brown",
+      "body_type": "SUV",
+      "seating_capacity": 7,
+      "transmission": "automatic",
+      "fuel_type": "diesel",
+      "price": 2390000.00,
+      "status": "available",
+      "supplier": "Toyota Motors PH",
+      "primary_photo": "https://cdn.automatik.ph/vehicles/fortuner_gr_front.jpg"
+    }
+
+----------------------------------------------------------------------
+E.4  INQUIRIES & CHATBOT
+----------------------------------------------------------------------
+
+  Tables: inquiries, chatbot_logs, agent_tasks
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  POST    /inquiries                     [PUB]    Create inquiry. Guests provide guest_name,
+                                                  guest_email. Customers auto-linked.
+  GET     /inquiries                     [ADM]    All inquiries. Filter: status, agent_id,
+                                                  date range. Paginated.
+  GET     /inquiries/my                  [CUS]    Own inquiries joined with vehicles.
+  GET     /inquiries/<id>                [ADM/   Full detail + chatbot logs.
+                                          AGT]
+  PUT     /admin/inquiries/<id>/assign   [ADM]    Assign agent, set status=assigned.
+  PUT     /inquiries/<id>/resolve        [AGT]    Resolve (agent must own inquiry).
+  PUT     /inquiries/<id>/close          [ADM]    Close (only from resolved status).
+  POST    /chatbot/message               [PUB]    Send message to AI chatbot.
+                                                  Returns bot_response + intent_tag.
+                                                  Gated by chatbot_enabled setting.
+  GET     /admin/chatbot/logs            [ADM]    Chatbot logs. Filter: session_id,
+                                                  user_id, intent_tag.
+  GET     /admin/chatbot/logs/<id>       [ADM]    Single log entry.
+
+  Intent Tag Taxonomy (intent_tag ENUM):
+    Tag                Trigger Description
+    ------------------ -----------------------------------------------
+    price_inquiry      User asks about vehicle price/payment
+    test_drive         User wants to schedule a test drive
+    availability       User asks if a vehicle is in stock
+    financing          Questions about loans or installment
+    warranty           Warranty coverage questions
+    service_booking    Service or maintenance scheduling
+    document_request   OR, CR, or contract inquiry
+    complaint          Dissatisfaction or issue report
+    general_inquiry    Catch-all for unmatched polite queries
+    unclassified       AI could not determine intent (fallback)
+
+  <Frontend Data:>
+    GET /inquiries list item:
+    {
+      "inquiry_id": 1,
+      "vehicle": "Toyota Fortuner GR Sport",
+      "customer_name": "Pedro Garcia",
+      "agent_name": "Miguel Reyes",
+      "message": "I am interested in the Fortuner GR...",
+      "status": "assigned",
+      "created_at": "2026-04-19 08:40:18"
+    }
+
+    POST /chatbot/message Response:
+    {
+      "response": "The Toyota Fortuner GR Sport is priced at PHP 2,390,000.",
+      "intent": "price_inquiry"
+    }
+
+----------------------------------------------------------------------
+E.5  SALES & CONTRACTS
+----------------------------------------------------------------------
+
+  Tables: sales, sales_contracts, documents, insurance_records
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /admin/sales                   [ADM]    All sales. Filter: status, payment_type,
+                                                  date range. JOIN vehicles + profiles.
+  GET     /admin/sales/<id>              [ADM]    Full sale: contracts, loan, payments,
+                                                  insurance, documents.
+  POST    /admin/sales                   [ADM]    8-step transaction chain (vehicle reserve,
+                                                  sale insert, loan, contract, commission,
+                                                  audit, notify).
+  PUT     /admin/sales/<id>/status       [ADM]    Update sale status. Cancel restores
+                                                  vehicle to available.
+  GET     /sales/my                      [CUS]    Own sales (customer_id=session).
+  GET     /sales/my/<id>                 [CUS]    Own sale detail (verify ownership).
+  GET     /admin/sales/<id>/contract     [ADM/   Get contract record.
+                                          AGT]
+  POST    /admin/sales/<id>/contract     [ADM]    Create contract (status=draft).
+  PUT     /admin/sales/<id>/contract/    [ADM]    Sign contract. Set status=signed.
+          sign                                    Records signed_at, reviewed_by.
+  GET     /admin/insurance               [ADM]    All insurance records.
+  POST    /admin/sales/<id>/insurance    [ADM]    Add insurance to sale.
+  PUT     /admin/insurance/<id>          [ADM]    Update insurance status, coverage dates.
+
+  Sale Status Transitions:
+    pending → active → completed
+    pending → cancelled
+    active → cancelled
+
+  <Frontend Data:>
+    GET /admin/sales list item:
+    {
+      "sale_id": 1,
+      "vehicle": "Hyundai Tucson HTRAC (2025)",
+      "customer": "Maria Dela Cruz",
+      "agent": "Anna Santos",
+      "selling_price": 1648000.00,
+      "payment_type": "cash",
+      "status": "completed",
+      "sale_date": "2026-04-19 08:40:18",
+      "contract_status": "signed"
+    }
+
+----------------------------------------------------------------------
+E.6  FINANCING: LOANS & AMORTIZATION
+----------------------------------------------------------------------
+
+  Tables: loan_details, amortization_schedule
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /admin/loans                   [ADM]    All loans. JOIN sales + customer +
+                                                  vehicle. Filter: bank_approval_status.
+  GET     /admin/loans/<id>              [ADM]    Loan detail + full amortization schedule.
+  POST    /admin/sales/<id>/loan         [ADM]    Create loan, generate amortization
+                                                  schedule. Validates term 6-60mo, rate
+                                                  0-30%, amount > 0.
+  PUT     /admin/loans/<id>              [ADM]    Update bank_approval_status. Notifies
+                                                  customer.
+  GET     /admin/loans/<id>/schedule     [ADM]    Full amortization schedule for loan.
+  GET     /loans/my                      [CUS]    Own active loan + schedule.
+  PUT     /admin/amortization/<id>/      [ADM]    Mark schedule row paid/overdue.
+          status
+  GET     /admin/amortization/overdue    [ADM]    Overdue payments list.
+  POST    /admin/loans/<id>/compute      [ADM]    Recompute amortization (rate/term
+                                                  change). Uses remaining_balance fix.
+
+  <Frontend Data:>
+    GET /admin/loans/<id>/schedule item:
+    {
+      "schedule_id": 1,
+      "period_number": 1,
+      "due_date": "2025-05-15",
+      "amount_due": 37373.45,
+      "principal": 27015.12,
+      "interest": 10358.33,
+      "balance": 1884984.88,
+      "status": "paid"
+    }
+
+----------------------------------------------------------------------
+E.7  PAYMENTS
+----------------------------------------------------------------------
+
+  Tables: payments, amortization_schedule
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /admin/payments                [ADM]    All payments. Filter: method, date range.
+  GET     /admin/payments/<id>           [ADM]    Single payment with full context.
+  POST    /admin/sales/<id>/payments     [ADM]    Record payment. 5-step cascade
+                                                  (payment + schedule update).
+  GET     /payments/my                   [CUS]    Own payment history.
+  GET     /admin/sales/<id>/payments     [ADM/   Payments for one sale.
+                                          AGT]
+  GET     /admin/payments/summary        [ADM]    Monthly totals. Filter: ?year=.
+
+  Payment Methods: cash, bank_transfer, check, online
+
+  <Frontend Data:>
+    GET /payments/my list item:
+    {
+      "payment_id": 1,
+      "sale_id": 1,
+      "vehicle": "Hyundai Tucson HTRAC",
+      "amount_paid": 1648000.00,
+      "payment_method": "bank_transfer",
+      "payment_date": "2026-04-19 08:40:18",
+      "reference": "BDO-TXN-20250310-001"
+    }
+
+----------------------------------------------------------------------
+E.8  AGENT MODULE
+----------------------------------------------------------------------
+
+  Tables: agent_details, agent_commissions, agent_tasks
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /agent/dashboard               [AGT]    Aggregate: inquiries count, pending
+                                                  tasks, unpaid commissions, 5 recent
+                                                  sales.
+  GET     /agent/inquiries               [AGT]    Own inquiries (agent_id=session).
+  GET     /agent/tasks                   [AGT]    Own tasks. Filter: status, task_type.
+  POST    /agent/tasks                   [AGT]    Create task (must own linked inquiry).
+  PUT     /agent/tasks/<id>              [AGT]    Update task (verify ownership).
+  DELETE  /agent/tasks/<id>              [AGT]    Soft delete (status=cancelled).
+  GET     /agent/commissions             [AGT]    Own commissions. JOIN sales+vehicles.
+  GET     /admin/commissions             [ADM]    All commissions. Filter: agent_id,
+                                                  is_paid.
+  PUT     /admin/commissions/<id>/pay    [ADM]    Mark commission paid. Notify agent.
+  GET     /admin/agents/<id>/performance [ADM]    Agent performance: total_sales, revenue,
+                                                  commission_total, avg_rate over date
+                                                  range.
+
+  Task Types: follow_up, appointment, demo, document_prep, other
+  Task Statuses: pending, in_progress, done, cancelled
+
+  <Frontend Data:>
+    GET /agent/dashboard:
+    {
+      "assigned_inquiries": 5,
+      "pending_tasks": 3,
+      "unpaid_commissions_total": 83650.00,
+      "recent_sales": [ ... ]  // last 5 sales
+    }
+
+----------------------------------------------------------------------
+E.9  CUSTOMER PORTAL
+----------------------------------------------------------------------
+
+  All /portal/* routes require: @login_required + @role_required('customer')
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /portal/dashboard              [CUS]    Active sales count, next due date +
+                                                  amount, open inquiries, unread
+                                                  notifications.
+  GET     /portal/vehicles               [CUS]    Public vehicle list.
+  GET     /portal/sales                  [CUS]    Own sales JOIN vehicles + contracts.
+  GET     /portal/sales/<id>             [CUS]    Full sale detail (contract, loan,
+                                                  schedule, payments, docs).
+  GET     /portal/payments               [CUS]    Own payment history.
+  GET     /portal/amortization           [CUS]    Own active loan schedule.
+  GET     /portal/documents              [CUS]    Accessible documents for own sales.
+  GET     /portal/documents/<id>         [CUS]    Return file_url (verify ownership +
+                                                  is_accessible).
+  GET     /portal/inquiries              [CUS]    Own inquiries.
+  POST    /portal/inquiries              [CUS]    Create inquiry (user_id auto-set).
+  GET     /portal/notifications          [CUS]    Own notifications. Filter: ?is_read=.
+  PUT     /portal/notifications/<id>/read[CUS]    Mark notification read.
+  PUT     /portal/profile                [CUS]    Update profile + customer_details.
+  GET     /portal/insurance              [CUS]    Own insurance records.
+  GET     /portal/warranty               [CUS]    Own warranty claims.
+  POST    /portal/warranty               [CUS]    Submit warranty claim (verify sale
+                                                  ownership).
+
+  <Frontend Data:>
+    GET /portal/dashboard:
+    {
+      "active_sales_count": 1,
+      "next_due_date": "2025-07-15",
+      "next_due_amount": 37373.45,
+      "open_inquiries_count": 2,
+      "unread_notifications_count": 1
+    }
+
+----------------------------------------------------------------------
+E.10  SERVICE BOOKINGS & SLOTS
+----------------------------------------------------------------------
+
+  Tables: service_bookings, service_slots
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /service/slots                 [PUB]    Available future slots. Shows
+                                                  remaining = capacity - booked.
+  GET     /service/slots/<id>            [PUB]    Slot detail + remaining count.
+  POST    /admin/service/slots           [ADM]    Create slot. Validate: capacity > 0,
+                                                  slot_type in enum.
+  PUT     /admin/service/slots/<id>      [ADM]    Update slot (409 if reducing capacity
+                                                  below bookings).
+  DELETE  /admin/service/slots/<id>      [ADM]    Delete (409 if bookings exist).
+  GET     /admin/service/bookings        [ADM]    All bookings with JOINs.
+  GET     /service/bookings/my           [CUS]    Own bookings.
+  POST    /service/bookings              [CUS]    Book slot. Atomic 4-step with
+                                                  FOR UPDATE. 503 on lock timeout.
+  PUT     /admin/service/bookings/<id>/  [ADM]    Confirm booking.
+          confirm                                 Notifies customer.
+  PUT     /admin/service/bookings/<id>/  [ADM]    Complete booking.
+          complete
+  PUT     /service/bookings/<id>/cancel  [CUS]    Cancel. Restores slot capacity.
+
+  Slot Types: test_drive, maintenance, repair
+  Booking Statuses: pending, confirmed, completed, cancelled
+
+  <Frontend Data:>
+    GET /service/slots list item:
+    {
+      "slot_id": 1,
+      "slot_datetime": "2025-05-20 09:00:00",
+      "slot_type": "test_drive",
+      "capacity": 2,
+      "booked": 1,
+      "remaining": 1,
+      "is_available": true
+    }
+
+----------------------------------------------------------------------
+E.11  WARRANTY CLAIMS
+----------------------------------------------------------------------
+
+  Tables: warranty_claims, sales, vehicles, service_bookings
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /admin/warranty                [ADM]    All claims. Filter: status.
+  GET     /admin/warranty/<id>           [ADM]    Detail + linked service bookings.
+  POST    /warranty                      [CUS]    Submit claim. Verify sale ownership.
+                                                  status=submitted. Validate
+                                                  issue_description (max 1000 chars).
+  GET     /warranty/my                   [CUS]    Own claims JOIN vehicles + sales.
+  PUT     /admin/warranty/<id>/review    [ADM]    Set status=under_review.
+  PUT     /admin/warranty/<id>/approve   [ADM]    Approve. Notify customer.
+  PUT     /admin/warranty/<id>/reject    [ADM]    Reject. resolution_notes required.
+  PUT     /admin/warranty/<id>/resolve   [ADM]    Resolve. Notify customer.
+
+  Claim Types: repair, replacement, refund
+  Claim Statuses: submitted → under_review → approved → resolved
+                                        → rejected
+
+  <Frontend Data:>
+    GET /warranty/my list item:
+    {
+      "claim_id": 1,
+      "vehicle": "Hyundai Tucson HTRAC",
+      "claim_type": "repair",
+      "description": "Air conditioning unit not cooling properly...",
+      "status": "approved",
+      "submitted_at": "2025-05-12 09:00:00",
+      "resolved_at": null
+    }
+
+----------------------------------------------------------------------
+E.12  DOCUMENTS
+----------------------------------------------------------------------
+
+  Tables: documents, sales
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /admin/documents               [ADM]    All documents. Filter: document_type,
+                                                  sale_id.
+  GET     /admin/documents/<id>          [ADM]    file_url + metadata.
+  POST    /admin/sales/<id>/documents    [ADM]    Insert document record (file_url from
+                                                  cloud storage).
+  PUT     /admin/documents/<id>          [ADM]    Update file_url or is_accessible toggle.
+  DELETE  /admin/documents/<id>          [ADM]    DB record only (physical file NOT
+                                                  deleted).
+  GET     /portal/documents              [CUS]    Accessible docs for own sales.
+
+  Document Types: OR, CR, warranty_cert, amortization_schedule, sales_contract, other
+
+  File Storage Strategy:
+    Backend:  S3-compatible (AWS S3 / Cloudflare R2 / Backblaze B2)
+    Dev:      Flask serves from /uploads/ static folder
+    Cleanup:  Nightly cron compares S3 bucket vs documents table → orphans deleted
+
+----------------------------------------------------------------------
+E.13  SUPPLIERS & SUPPLIES
+----------------------------------------------------------------------
+
+  Tables: suppliers, supplies
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /admin/suppliers               [ADM]    List suppliers. Filter: is_active.
+                                                  Includes vehicle count.
+  GET     /admin/suppliers/<id>          [ADM]    Detail + vehicle count + supplies list.
+  POST    /admin/suppliers               [ADM]    Add supplier.
+  PUT     /admin/suppliers/<id>          [ADM]    Update supplier info.
+  GET     /admin/supplies                [ADM]    All supplies JOIN suppliers.
+                                                  Filter: ?low_stock=1.
+  GET     /admin/supplies/<id>           [ADM]    Supply detail + supplier info.
+  POST    /admin/supplies                [ADM]    Add supply item.
+  PUT     /admin/supplies/<id>           [ADM]    Update supply. Same validations.
+  DELETE  /admin/supplies/<id>           [ADM]    Delete (409 if linked to active
+                                                  bookings).
+  GET     /admin/supplies/low-stock      [ADM]    Where stock_qty <= reorder_level.
+
+  <Frontend Data:>
+    GET /admin/suppliers list item:
+    {
+      "supplier_id": 1,
+      "company_name": "Toyota Motors PH",
+      "contact_name": "Ramon Castillo",
+      "contact_email": "rcastillo@toyota.ph",
+      "contact_phone": "02-88001234",
+      "vehicle_count": 2,
+      "is_active": true
+    }
+
+----------------------------------------------------------------------
+E.14  NOTIFICATIONS
+----------------------------------------------------------------------
+
+  Tables: notifications
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /notifications                 [USR]    Own notifications. Filter: is_read,
+                                                  channel. ORDER BY created_at DESC.
+  GET     /notifications/unread-count    [USR]    COUNT is_read=0 (badge display).
+  PUT     /notifications/<id>/read       [USR]    Mark single notification read.
+  PUT     /notifications/read-all        [USR]    Mark all notifications read.
+  POST    /admin/notifications           [ADM]    Broadcast to user or role.
+  DELETE  /notifications/<id>            [USR]    Delete own notification.
+
+  Channels: in_app, email, sms
+
+  Notification Channel Matrix:
+    Trigger Event                      in_app   email   sms
+    ---------------------------------  -------  ------  -----
+    Sale created                       ✓        ✓       —
+    Inquiry assigned                   ✓        —       —
+    Amortization due (3 days before)   ✓        ✓       ✓
+    Amortization overdue               ✓        ✓       ✓
+    Payment received                   ✓        ✓       —
+    Warranty approved                  ✓        ✓       —
+    Booking confirmed                  ✓        ✓       —
+    Commission paid                    ✓        —       —
+    Loan status updated                ✓        ✓       —
+    Password reset                     —        ✓       —
+
+  <Frontend Data:>
+    GET /notifications list item:
+    {
+      "notification_id": 1,
+      "title": "Amortization Due",
+      "message": "Your payment of PHP 37,373.45 is due on July 15, 2025.",
+      "channel": "email",
+      "ref_type": "amortization_schedule",
+      "ref_id": 3,
+      "is_read": false,
+      "created_at": "2026-04-19 08:40:18"
+    }
+
+----------------------------------------------------------------------
+E.15  AUDIT LOGS
+----------------------------------------------------------------------
+
+  Tables: audit_logs
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /admin/audit-logs              [ADM]    All logs. Filter: action, table_name,
+                                                  user_id, date range. Paginated.
+  GET     /admin/audit-logs/<id>         [ADM]    Single log with old/new value JSON diff.
+  GET     /logs                          [ADM]    Direct query all audit_logs (defined
+                                                  in app.py).
+
+  Audited Tables: vehicles, sales, users, loan_details, payments, warranty_claims,
+                  system_settings
+
+  <Frontend Data:>
+    GET /admin/audit-logs item:
+    {
+      "log_id": 1,
+      "user": "Jose Ramirez",
+      "action": "UPDATE",
+      "table_name": "vehicles",
+      "record_id": 4,
+      "old_value": {"status": "available"},
+      "new_value": {"status": "reserved"},
+      "ip_address": "192.168.1.10",
+      "created_at": "2026-04-19 08:40:18"
+    }
+
+----------------------------------------------------------------------
+E.16  SYSTEM SETTINGS
+----------------------------------------------------------------------
+
+  Tables: system_settings
+
+  METHOD  ENDPOINT                       ROLE     DESCRIPTION
+  ------  ------------------------------ -------  ----------------------------------------
+  GET     /admin/settings                [ADM]    All settings (key-value pairs).
+  GET     /admin/settings/<key>          [ADM]    Single setting by key.
+  PUT     /admin/settings/<key>          [ADM]    Update value. Logs audit (old→new).
+  POST    /admin/settings                [ADM]    Insert new setting key (409 if dup).
+
+  Registered Keys:
+    Key                           Type        Default    Description
+    ----------------------------  ----------  ---------  --------------------------------
+    default_commission_rate       DECIMAL(5,2) 5.00       Default agent commission rate %
+    chatbot_enabled               TINYINT(1)  1          Toggle AI chatbot on/off
+    max_loan_term_months          INT         60         Maximum loan term in months
+    low_stock_threshold           INT         3          Low stock alert threshold
+    email_verify_expiry_hours     INT         24         Email verification token TTL
+    portal_token_expiry_days      INT         7          Portal magic-link token TTL
+    session_lifetime_seconds      INT         3600       Flask session idle timeout
+
+  <Frontend Data:>
+    GET /admin/settings:
+    {
+      "default_commission_rate": "3.00",
+      "chatbot_enabled": "true",
+      "max_loan_term_months": "60",
+      "low_stock_threshold": "3",
+      "email_verify_expiry_hours": "24",
+      "portal_token_expiry_days": "7",
+      "session_lifetime_seconds": "3600"
+    }
+
+
+================================================================================
+F.  FRONTEND DATA DISPLAY REFERENCE (CRITICAL JOINS)
+================================================================================
+
+  Use these JOIN patterns to display data on the frontend:
+
+  Primary Table   Joined Tables                    Frontend Use Case
+  --------------- --------------------------------  --------------------------------------
+  users           user_profile                      User list with full names, contact info
+  vehicles        vehicle_photos                    Vehicle listing with primary photo
+  vehicles        suppliers                         Vehicle detail with manufacturer info
+  inquiries       vehicles + users + agent_details  Inquiry detail showing all parties
+  sales           vehicles + customer + agent       Sale card with vehicle + customer info
+  sales           sales_contracts                   Sale detail showing contract status
+  sales           loan_details                      Installment sale showing financing
+  sales           insurance_records                 Sale detail showing insurance
+  sales           documents                         Sale detail showing document downloads
+  loan_details    amortization_schedule             Payment breakdown table
+  amortization    payments                          Matching payments to schedule rows
+  payments        users (recorded_by)               Payment receipt with recorder name
+  agent_commiss   sales + agent + user_profile      Commission report for agents
+  agent_tasks     inquiries + vehicles              Task card with linked inquiry context
+  service_book    service_slots + vehicles          Booking detail with slot info
+  warranty_claim  sales + vehicles                  Claim detail with vehicle info
+  warranty_claim  service_bookings                  Claim with linked service records
+  chatbot_logs    users + inquiries                 Chatbot thread context
+  notifications   users                             Notification recipient name
+  supplies        suppliers                         Parts list with supplier info
+  audit_logs      users (actor)                     Audit trail with actor name
+  system_setting  users (updater)                   Setting change tracking
+  access_tokens   users                             Token validation with user status
+
+
+================================================================================
+G.  HTTP STATUS CODE REFERENCE
+================================================================================
+
+  Code  Name                    When Used
+  ----  ----------------------  ------------------------------------------------
+  200   OK                      Successful GET, PUT (with body)
+  201   Created                 Successful POST (resource created)
+  204   No Content              Successful DELETE (no body)
+  302   Found (Redirect)        Portal magic-link redirect
+  400   Bad Request             Missing field, malformed JSON, invalid body
+  401   Unauthorized            No active session / not logged in
+  403   Forbidden               Wrong role or account deactivated
+  404   Not Found               Resource does not exist
+  409   Conflict                Duplicate email, invalid state transition,
+                                slot full, active bookings exist
+  410   Gone                    Token expired or already consumed
+  422   Unprocessable Entity    Validation failure (field-level errors)
+  429   Too Many Requests       Rate limit exceeded (auth routes)
+  503   Service Unavailable     Chatbot disabled, DB lock timeout
+  500   Internal Server Error   Unhandled exception (should never reach client)
+
+
+================================================================================
+H.  INPUT VALIDATION RULES
+================================================================================
+
+  Module            Field             Rule                              Error
+  ----------------- ----------------- ---------------------------------  -----
+  Auth — Register   email             Valid format, unique in DB         422/409
+  Auth — Register   password          Min 8 characters                   422
+  Auth — Reset PW   password          Min 8 chars; confirm must match   422
+  Users — Create    role              ENUM: admin|agent|customer         422
+  Users — Create    email             Valid format, unique               422/409
+  Agent — Update    commission_rate   DECIMAL 0.00–100.00                422
+  Vehicles — Create price             DECIMAL > 0                        422
+  Vehicles — Create status            ENUM: available|reserved|...       422
+  Vehicles — Create specs_json        Valid JSON string or NULL          422
+  Vehicles — Create supplier_id       Must exist in suppliers table      404
+  Sales — Create    selling_price     DECIMAL > 0                        422
+  Sales — Create    payment_type      ENUM: cash|installment             422
+  Sales — Create    loan_amount       DECIMAL > 0, <= selling_price      422
+  Sales — Create    term_months       INT 6–60                           422
+  Sales — Create    interest_rate     DECIMAL 0.0–30.0                   422
+  Payments — Record amount_paid       DECIMAL > 0                        422
+  Payments — Record payment_method    ENUM: cash|bank_transfer|...       422
+  Service Slots     capacity          INT > 0                            422
+  Warranty — Submit issue_description Not empty, max 1000 chars          422
+  Settings — Update setting_value     Not null or empty                  422
+  Suppliers — Create email            Valid format                        422
+  Inquiries — Guest guest_email       Valid format                        422
+  Inquiries — Guest guest_name        Not empty, max 100 chars           422
+
+
+================================================================================
+END OF DOCUMENT
+Generated from: API_FLOW.md, DATABASE.md, app.py, config.py, .env.example,
+                requiremets.txt, README.md
+================================================================================

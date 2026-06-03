@@ -1,6 +1,10 @@
-from flask import jsonify,request,session
+from flask import jsonify,request,session, abort
 from datetime import datetime
 from conn import run_query
+
+# ---------- VARIABLES -----------
+TASK_TYPES = ["follow_up", "appointment", "demo", "document_prep", "other"]
+STATUS = ["pending", "in_progress", "done", "cancelled"]
 
 
 def getDashboard():
@@ -139,8 +143,6 @@ def getInquiries():
   })
   
 # ---------- TASKS -----------------  
-TASK_TYPES = ["follow_up", "appointment", "demo", "document_prep", "other"]
-STATUS = ["pending", "in_progress", "done", "cancelled"]
 
 def getTasks():
 
@@ -403,7 +405,6 @@ def updateTask(task_id):
         "message": f"task [{task_id}] updated successfully"
     }), 200
     
-    
 def deleteTask(task_id):
 
     current_agent = session.get("user")
@@ -447,4 +448,130 @@ def deleteTask(task_id):
 
     return jsonify({
         "message": f"task [{task_id}] deleted successfully"
+    }), 200
+    
+
+# -------- ADMIN ROUTES -------- 
+# -------- AGENT COMMISSIONS -------- 
+
+def getCommissions():
+    current_agent = session["user"]
+    
+    if not current_agent:
+        abort(404)
+    
+    # storage (key:value) pair
+    data = {}
+    
+    # get the commissions
+    commissions = run_query("""
+                            SELECT * FROM agent_commissions
+                            WHERE agent_id = %s
+                            """,
+                            (current_agent,),
+                            fetch="all")
+    
+    agent_sales = run_query("""
+                            SELECT * FROM sales s
+                            JOIN vehicles v 
+                            ON s.vehicle_id = v.vehicle_id
+                            WHERE agent_id = %s
+                            """,
+                            (current_agent,),
+                            fetch="all")
+    
+    data["agent_commissions"] = commissions
+    data["agent_sales"] = agent_sales
+    
+    return jsonify({
+        "data": data
+    }), 200
+    
+def getCommissionsAdmin():
+    agent_id = request.args.get("agent_id")
+    is_paid = request.args.get("is_paid")
+
+    query = "SELECT * FROM agent_commissions"
+    conditions = []
+    params = []
+
+    if agent_id:
+        conditions.append("agent_id = %s")
+        params.append(agent_id)
+
+    if is_paid is not None:
+        if is_paid not in ("0", "1"):
+            return jsonify({"error": "is_paid must be 0 or 1"}), 400
+
+        conditions.append("is_paid = %s")
+        params.append(int(is_paid))
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    commissions = run_query(
+        query,
+        tuple(params),
+        fetch="all"
+    )
+
+    return jsonify(commissions), 200
+
+def payCommission(commission_id):
+    if not commission_id:
+        return jsonify({
+            "message": "commission_id has no value."
+        }), 400
+
+    # check if the commission is already paid and existing
+    commission = run_query("SELECT * FROM agent_commissions WHERE commission_id = %s", (commission_id,), fetch="one")
+    
+    if not commission:
+        return jsonify({
+            "message": "commission not found."
+        }), 404
+    
+    if commission["is_paid"] == 1:
+        return jsonify({
+            "message": "commission already paid."
+        }), 400
+    
+    paid_at = datetime.now()
+    
+    run_query("""
+              UPDATE agent_commissions
+              SET is_paid = %s, paid_at = %s 
+              """,
+              (1,paid_at))
+    
+    return jsonify({
+        "message": "commission status updated to 'paid'"
+    }), 200
+    
+def agentPerformance(agent_id):
+    if not agent_id:
+        return jsonify({
+            "message": "agent_id not found."
+        }), 400
+
+    stats = run_query(
+        """
+        SELECT
+            COUNT(*) AS total_sales,
+            COALESCE(SUM(commission_amount), 0) AS revenue,
+            COALESCE(SUM(commission_id), 0) AS commission_total,
+            COALESCE(AVG(rate_applied), 0) AS avg_rate
+        FROM agent_commissions
+        WHERE agent_id = %s
+        """,
+        (agent_id,),
+        fetch="one"
+    )
+
+    return jsonify({
+        "agent_id": agent_id,
+        "total_sales": stats["total_sales"],
+        "revenue": float(stats["revenue"]),
+        "commission_total": float(stats["commission_total"]),
+        "avg_rate": float(stats["avg_rate"])
     }), 200
