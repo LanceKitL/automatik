@@ -9,7 +9,9 @@ from controllers.authController import (
     verifyEmail,
     changePassword,
     seedAdmin,
-    resendVerification
+    resendVerification,
+    forgotPassword,
+    resetPassword
     
 )
 
@@ -54,6 +56,12 @@ def register(): return AgentAccountHandler()
 @auth_bp.route("/changePassword", methods=["PUT"])
 @logged_in_required
 def change_pw(): return changePassword()
+
+@auth_bp.route("/forgot-password", methods=["POST"])
+def forgot(): return forgotPassword()
+
+@auth_bp.route("/reset-password", methods=["POST"])
+def reset(): return resetPassword()
 
 @auth_bp.route("/logout", methods=["POST"])
 @logged_in_required

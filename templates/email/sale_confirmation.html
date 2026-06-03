@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#f0f1f5;font-family:Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f1f5"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;margin:24px 0">
+<tr><td style="padding:32px 24px;text-align:center;background-color:#1a3c34">
+<h1 style="color:#ffffff;margin:0;font-size:24px">Sale Confirmed!</h1>
+</td></tr>
+<tr><td style="padding:24px">
+<p style="font-size:16px;color:#333">Hi {{ name }},</p>
+<p style="font-size:16px;color:#333;line-height:1.5">Your purchase has been confirmed. Here are the details:</p>
+<table width="100%" cellpadding="8" style="margin:16px 0;background-color:#f8f9fa">
+<tr><td style="font-size:14px;color:#666">Sale ID</td><td style="font-size:14px;font-weight:bold">{{ sale_id }}</td></tr>
+<tr><td style="font-size:14px;color:#666">Vehicle</td><td style="font-size:14px;font-weight:bold">{{ vehicle_name }}</td></tr>
+<tr><td style="font-size:14px;color:#666">Total Amount</td><td style="font-size:14px;font-weight:bold">PHP {{ "{:,.2f}".format(total_amount) if total_amount is number else total_amount }}</td></tr>
+</table>
+<p style="font-size:16px;color:#333;line-height:1.5">Thank you for choosing AutoMatik!</p>
+</td></tr>
+<tr><td style="padding:16px 24px;text-align:center;background-color:#f0f1f5;font-size:12px;color:#999">
+AutoMatik &copy; 2026. All rights reserved.
+</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>

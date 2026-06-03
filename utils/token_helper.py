@@ -31,3 +31,34 @@ def EmailVerificationToken(user_id,conn=None,cursor=None):
         "token_id": token_id,
         "raw_token": raw_token
     }
+
+def PasswordResetToken(user_id):
+    """
+    Generate a password reset token for the given user.
+    Token expires in 1 hour (vs 5 min for email verification).
+    Stores hashed token in access_tokens table with token_type='password_reset'.
+    """
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    token_id = secrets.token_hex(16)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+
+    response = run_query("""
+            INSERT INTO access_tokens
+              (token_id, user_id, token_hash, token_type, expires_at)
+              VALUES
+              (%s, %s, %s, %s, %s)
+            """,
+            (token_id,
+             user_id,
+             token_hash,
+             'password_reset',
+             expires_at))
+
+    if response is None:
+        return False
+
+    return {
+        "token_id": token_id,
+        "raw_token": raw_token
+    }

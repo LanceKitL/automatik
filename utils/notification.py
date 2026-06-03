@@ -6,6 +6,10 @@ from utils.socket_handler import socketio
 
 
 def fire_notif(user_id, title, message, channel, ref_type, ref_id):
+    """
+    Send a notification to a specific user.
+    Inserts into notifications table and emits via WebSocket.
+    """
     created_at = datetime.now()
     res = run_query("""
                     INSERT INTO notifications
@@ -28,11 +32,14 @@ def fire_notif(user_id, title, message, channel, ref_type, ref_id):
     return True
 
 def brodcast_notif(role, title, message, channel, ref_type, ref_id):
+    """
+    Broadcast a notification to all users with a given role.
+    Inserts into notifications table for each user and emits via WebSocket.
+    """
     res = run_query("SELECT * FROM users WHERE role = %s",(role,), fetch="all")
     created_at = datetime.now()
-    if not res: # if a user with role admin exists
+    if not res:
         return False
-        # insert data to notifications
     for admin in res:
             run_query("""
                 INSERT INTO notifications
@@ -41,15 +48,25 @@ def brodcast_notif(role, title, message, channel, ref_type, ref_id):
                 VALUES (%s,%s,%s,%s,%s,%s,%s)
                 """,
                 (admin["user_id"], title, message, channel, ref_type, ref_id, created_at))
-    
-    socketio.emit('notification',{
+
+    socketio.emit('notification', {
         'title': title,
         'message': message,
         'channel': channel,
-        'created_at': created_at
+        'created_at': created_at.isoformat()
     }, room=f"role_{role}")
-    
+
     return True
+
+def notify_user(user_id, title, message, ref_type, ref_id):
+    """Shorthand for fire_notif with channel='in_app'."""
+    return fire_notif(user_id, title, message, "in_app", ref_type, ref_id)
+
+def notify_and_email(user_id, title, message, ref_type, ref_id, email_func, *email_args):
+    """Fire in_app notification and send email in one call."""
+    fire_notif(user_id, title, message, "in_app", ref_type, ref_id)
+    if email_func:
+        email_func(*email_args)
 
 def read_notif(id):
     run_query("""
