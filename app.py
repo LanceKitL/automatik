@@ -1,43 +1,14 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 from validators.middleware import role_required, logged_in_required
 from conn import run_query
-
-=======
-<<<<<<< HEAD
->>>>>>> 36bf98c (customer_portal)
-=======
-<<<<<<< HEAD
->>>>>>> fe4172f (completed the email_verification, designed email response and dynamic IP binding)
 from flask import Flask, jsonify, render_template
 from services.mail_service import init_mail
 from datetime import timedelta
 from flask_cors import CORS
 from config import MailConfig
-<<<<<<< HEAD
 from utils.socket_handler import socketio
-=======
-=======
-from flask import Flask, jsonify
-from datetime import timedelta
-from flask_cors import CORS
-from config import MailConfig
-from services.mail_service import init_mail
->>>>>>> 2f24da0 (added email service / verification)
-<<<<<<< HEAD
->>>>>>> 36bf98c (customer_portal)
-=======
-=======
-from flask import Flask, jsonify, render_template
-from services.mail_service import init_mail
-from datetime import timedelta
-from flask_cors import CORS
-from config import MailConfig
->>>>>>> f27b11c (completed the email_verification, designed email response and dynamic IP binding)
->>>>>>> fe4172f (completed the email_verification, designed email response and dynamic IP binding)
 import os
 
 #routes
@@ -47,11 +18,7 @@ from routes.vehicles import vehicles_bp
 from routes.inquiries import inquiry_bp
 from routes.supplier import supplier_bp
 from routes.profile import profile_bp
-<<<<<<< HEAD
-from routes.notification import notif_bp
-=======
 from routes.customerportal import customerportal_bp
->>>>>>> 86b1ab3 (Adding customer portal API endpoints)
 
 app = Flask(__name__)
 
@@ -82,11 +49,7 @@ app.register_blueprint(vehicles_bp, url_prefix="/vehicle")
 app.register_blueprint(inquiry_bp, url_prefix="/inquiry")
 app.register_blueprint(supplier_bp, url_prefix="/supplier")
 app.register_blueprint(profile_bp, url_prefix="/profile")
-<<<<<<< HEAD
-app.register_blueprint(notif_bp, url_prefix="/notification")
-=======
 app.register_blueprint(customerportal_bp, url_prefix="/portal")
->>>>>>> 86b1ab3 (Adding customer portal API endpoints)
 
 #404 not found page
 @app.errorhandler(404)
