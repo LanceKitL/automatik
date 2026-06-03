@@ -1,3 +1,10 @@
 .venv
 __pycache__
+<<<<<<< HEAD
 .env
+=======
+.env
+
+postman/
+.postman/
+>>>>>>> b6e4c4b (fix customer portal queries and ignore postman files)

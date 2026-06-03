@@ -350,7 +350,7 @@ def create_customer_inquiry():
     run_query("""
         INSERT INTO inquiries (user_id, vehicle_id, message, status)
         VALUES (%s, %s, %s, 'open')
-    """, (user_id, vehicle_id, message), commit=True)
+    """, (user_id, vehicle_id, message))
 
     return jsonify({
         "message": "Inquiry submitted successfully."
@@ -405,7 +405,7 @@ def mark_customer_notification_read(notification_id):
         UPDATE notifications
         SET is_read = 1
         WHERE notification_id = %s AND user_id = %s
-    """, (notification_id, user_id), commit=True)
+    """, (notification_id, user_id))
 
     return jsonify({
         "message": "Notification marked as read successfully."
@@ -439,7 +439,7 @@ def update_customer_profile():
         data.get("zip_code"),
         data.get("profile_picture_url"),
         user_id
-    ), commit=True)
+    ))
 
     run_query("""
         UPDATE customer_details
@@ -451,7 +451,7 @@ def update_customer_profile():
         data.get("preferred_contact_method"),
         data.get("preferred_payment_method"),
         user_id
-    ), commit=True)
+    ))
 
     return jsonify({
         "message": "Customer profile updated successfully."
@@ -548,7 +548,7 @@ def create_customer_warranty_claim():
         INSERT INTO warranty_claims 
         (sale_id, vehicle_id, claim_type, description, status)
         VALUES (%s, %s, %s, %s, 'submitted')
-    """, (sale_id, vehicle_id, claim_type, description), commit=True)
+    """, (sale_id, vehicle_id, claim_type, description))
 
     return jsonify({
         "message": "Warranty claim submitted successfully."
