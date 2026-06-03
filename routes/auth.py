@@ -1,5 +1,5 @@
 from validators.middleware import role_required, logged_in_required
-from flask import Blueprint
+from flask import Blueprint, render_template, request
 from controllers.authController import (
     loginHandler,
     customerAccountHandler,
@@ -24,6 +24,11 @@ def seed():
 @logged_in_required
 def get_me(): return me()
 
+# TEMPORARY: Remove this GET route and templates/login.html after testing
+@auth_bp.route("/login", methods=["GET"])
+def login_page():
+    return render_template("login.html")
+
 @auth_bp.route("/login", methods=["POST"])
 def login(): return loginHandler()
     
@@ -36,7 +41,10 @@ def create_customer(): return customerAccountHandler()
 def verify_email(): return verifyEmail()
 
 @auth_bp.route("/resendVerification")
-def resend(email): return resendVerification(email)
+def resend():
+    # Get email from query parameter (e.g. ?email=user@example.com)
+    email = request.args.get("email")
+    return resendVerification(email)
     
 @auth_bp.route('/registerAgent', methods=["POST"])
 @logged_in_required

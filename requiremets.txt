@@ -4,6 +4,7 @@ mysql-connector-python
 openai
 python-dotenv
 flask_mail
+flask-socketio
 langchain
 lanchain-core
 langchain-nvidia-ai-endpoints

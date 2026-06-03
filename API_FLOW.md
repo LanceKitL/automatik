@@ -37,7 +37,7 @@ Pool config, size, connection reuse pattern
 RESOLVED #10CSRF protection added
 Flask-WTF token pattern, exemptions for API routes
 
-AUTOMATIKFlask API Flow — v2 Final (Panelist Resolved)
+AUTOMATIK Flask API Flow — v2 Final (Panelist Resolved)
 ## 2
 ## TABLE OF CONTENTS
 A. Technology Justification Flask vs alternatives — why this stack

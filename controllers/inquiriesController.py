@@ -2,7 +2,8 @@ from conn import run_query
 from flask import session, jsonify, request
 from datetime import datetime
 from utils.log import audit_log
-from utils.log import audit_log
+from utils.notification import fire_notif, brodcast_notif
+from services.mail_service import inquiry_received
 import json
 # inquiry_id
 # user_id
@@ -27,7 +28,7 @@ def submitInquiry(): # -> POST
     if session.get("role") == "agent" or session.get("role") == "admin":
         return jsonify({
             "message": "Forbidden Access."
-        }), 400
+        }), 403  # 403 Forbidden is correct for role-based access denial
     # important questions to answer before proceeding
     # kailan nagkakaron ng inquiry?
     # -> kapag si potential customer or existing customer is may purchase intent, gusto mag test drive
@@ -58,11 +59,34 @@ def submitInquiry(): # -> POST
                   (user,vehicle_id,message,'open'))
         
         audit_log(
+<<<<<<< HEAD
             id=res["user_id"], 
             action="POST", 
             tablename="inquiries", 
             record_id=res
+=======
+            id=user,
+            action="POST",
+            tablename="inquiries",
+            record_id=res,
+            new_value=json.dumps({
+                "user_id": user,
+                "vehicle_id": vehicle_id,
+                "message": message,
+                "status": "open"
+                },
+                default=str)
+>>>>>>> feature/web_socket
             )
+
+        fire_notif(
+            user_id=user,
+            title="Inquiry Submitted",
+            message="Your inquiry has been received. An agent will follow up shortly.",
+            channel="in_app",
+            ref_type="inquiries",
+            ref_id=res
+        )
 
         return jsonify({"message": "Inquiry sent successfully!"}), 200
     else: # if inquiry comes from a guest
@@ -98,6 +122,9 @@ def submitInquiry(): # -> POST
                 },  
                 default=str)
             )
+        
+        # send an email
+        inquiry_received(email)
         
         return jsonify({"message": "Inquiry sent successfully!"}), 200
 
@@ -193,7 +220,22 @@ def assignInquiry(inquiry_id):
         json.dumps(old_value, default=str),
         json.dumps(new_value, default=str)
     )    
-    
+
+    # Fetch agent details for the notification message
+    agent = run_query("SELECT * FROM agent_details WHERE user_id = %s", (current_agent_id,), fetch="one")
+    # Use a fallback label if agent_details record is missing (guard against None crash)
+    agent_label = agent["employee_number"] if agent else f"Agent #{current_agent_id}"
+    # guest_name is NULL for logged-in users; fall back to user_id for the message
+    customer_label = res.get("guest_name") or str(res.get("user_id", "Unknown"))
+    brodcast_notif(
+        role="admin",
+        title="Inquiry Assigned",
+        message=f"{agent_label} took inquiry #{inquiry_id} for {customer_label}",
+        channel="in_app",
+        ref_type="inquiries",
+        ref_id=inquiry_id
+    )
+
     return jsonify({
         "message": "task assigned successfully!"
     }), 200
@@ -255,6 +297,16 @@ def resolveInquiry(inquiry_id):
         json.dumps(old_value, default=str),
         json.dumps({"status": "resolved"}, default=str)
     )
+
+    if res.get("user_id"):
+        fire_notif(
+            user_id=res["user_id"],
+            title="Inquiry Resolved",
+            message="Your inquiry has been marked as resolved. Thank you!",
+            channel="in_app",
+            ref_type="inquiries",
+            ref_id=inquiry_id
+        )
 
     return jsonify({
         "message": "task marked as resolved."
@@ -466,6 +518,16 @@ def closeInquiry(inquiry_id):
         json.dumps(old_value, default=str),
         json.dumps({"status": "closed"}, default=str)
     )
+
+    if res.get("user_id"):
+        fire_notif(
+            user_id=res["user_id"],
+            title="Inquiry Closed",
+            message="Your inquiry has been closed. If you need further assistance, please submit a new inquiry.",
+            channel="in_app",
+            ref_type="inquiries",
+            ref_id=inquiry_id
+        )
     
     return jsonify({
         "message": "inquiry marked as 'closed'."

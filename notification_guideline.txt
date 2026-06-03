@@ -1,0 +1,95 @@
+NOTIFICATION SYSTEM — USAGE GUIDE
+====================================
+
+1. SENDING NOTIFICATIONS
+------------------------
+
+   A) Targeted to a specific user:
+
+       from utils.notification import fire_notif
+
+       fire_notif(
+           user_id=42,
+           title="Inquiry Assigned",
+           message="Your inquiry has been assigned.",
+           channel="in_app",        # 'in_app' | 'email' | 'sms'
+           ref_type="inquiries",    # optional reference table name
+           ref_id=1                 # optional reference row ID
+       )
+
+       -> Inserts a row in `notifications` table for that user
+       -> Emits SocketIO 'notification' event to room `user_42`
+
+   B) Broadcast to all users with a given role:
+
+       from utils.notification import brodcast_notif
+
+       brodcast_notif(
+           role="admin",
+           title="New Inquiry Submitted",
+           message="A customer submitted a new inquiry.",
+           channel="in_app",
+           ref_type="inquiries",
+           ref_id=42
+       )
+
+       -> Inserts a row for EVERY user with that role
+       -> Emits SocketIO 'notification' event to room `role_admin`
+
+
+2. DATABASE (notifications table)
+---------------------------------
+
+   Column           | Type            | Notes
+   -----------------|-----------------|------------------------------
+   notification_id  | int (PK)        | auto-increment
+   user_id          | int (FK)        | references users.user_id
+   title            | varchar(200)    |
+   message          | text            |
+   channel          | enum            | 'in_app' | 'email' | 'sms'
+   ref_type         | varchar(50)     | optional (e.g. 'inquiries')
+   ref_id           | int             | optional
+   is_read          | tinyint(1)      | default 0
+   created_at       | timestamp       | default CURRENT_TIMESTAMP
+
+
+3. API ENDPOINTS
+----------------
+
+   All require authentication (@logged_in_required).
+
+   GET  /notification/list
+       Returns JSON array of unread notifications for the current user.
+
+   PUT  /notification/read/<notification_id>
+       Marks a single notification as read (is_read = 1).
+       Only the owner can mark it.
+
+
+4. SOCKET.IO EVENTS (frontend)
+------------------------------
+
+   Event name      | Direction    | Payload
+   ----------------|-------------|---------------------------------------------------
+   connect         | client->srv | (automatic on page load)
+   connected       | srv->client  | { msg: "Authenticated as X (role=Y)" }
+   notification    | srv->client  | { title, message, channel, created_at }
+   disconnect      | both         | (automatic on page close)
+
+   Client auto-joins rooms:   user_{user_id}   and   role_{role}
+
+
+5. READING NOTIFICATIONS (frontend pattern)
+-------------------------------------------
+
+   On page load:
+       fetch('/notification/list') -> render each notification
+
+   On real-time arrival:
+       socket.on('notification', data -> prepend to list)
+
+   On user action (e.g. click "Mark read"):
+       fetch('/notification/read/' + id, { method: 'PUT' }) -> remove from DOM
+
+
+

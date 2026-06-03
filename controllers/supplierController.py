@@ -19,7 +19,7 @@ def searchSupplier (params):
     )
 
     if not res:
-        return jsonify ({"message": "Supplier not found"})
+        return jsonify ({"message": "Supplier not found"}), 404
     
     return jsonify ({"message": res})
 
