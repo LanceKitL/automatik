@@ -20,6 +20,7 @@ from routes.inquiries import inquiry_bp
 from routes.supplier import supplier_bp
 from routes.profile import profile_bp
 from routes.notification import notif_bp
+from routes.service import service_bp
 
 app = Flask(__name__)
 
@@ -51,6 +52,7 @@ app.register_blueprint(inquiry_bp, url_prefix="/inquiry")
 app.register_blueprint(supplier_bp, url_prefix="/supplier")
 app.register_blueprint(profile_bp, url_prefix="/profile")
 app.register_blueprint(notif_bp, url_prefix="/notification")
+app.register_blueprint(service_bp, url_prefix="/service")
 
 #404 not found page
 @app.errorhandler(404)
@@ -66,7 +68,6 @@ def forbidden(error):
 @app.errorhandler(500)
 def server_error(error):
     return render_template("error/500.html"), 500
-app.register_blueprint(service_bp, url_prefix="/api")
 
 @app.route("/health")
 def index():

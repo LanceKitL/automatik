@@ -12,6 +12,13 @@ from controllers.adminController import (
     get_customer_with,
     update_customer_with
 )
+from controllers.serviceController import (
+    listAllBookingsHandler,
+    updateBookingStatusHandler,
+    listAllWarrantyClaimsHandler,
+    getWarrantyClaimDetailHandler,
+    updateWarrantyStatusHandler,
+)
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -69,3 +76,70 @@ def show_customer(customer_id): return get_customer_with(customer_id)
 @logged_in_required
 @role_required("admin")
 def update_customer(customer_id): return update_customer_with(customer_id)
+
+
+# --- Admin: Service Bookings ---
+
+@admin_bp.route("/service/bookings")
+@logged_in_required
+@role_required("admin")
+def index_bookings():
+    return listAllBookingsHandler()
+
+
+@admin_bp.route("/service/bookings/<int:booking_id>/confirm", methods=["PUT"])
+@logged_in_required
+@role_required("admin")
+def confirm_booking(booking_id):
+    return updateBookingStatusHandler(booking_id, "confirmed")
+
+
+@admin_bp.route("/service/bookings/<int:booking_id>/complete", methods=["PUT"])
+@logged_in_required
+@role_required("admin")
+def complete_booking(booking_id):
+    return updateBookingStatusHandler(booking_id, "completed")
+
+
+# --- Admin: Warranty Claims ---
+
+@admin_bp.route("/warranty")
+@logged_in_required
+@role_required("admin")
+def index_warranty():
+    return listAllWarrantyClaimsHandler()
+
+
+@admin_bp.route("/warranty/<int:claim_id>")
+@logged_in_required
+@role_required("admin")
+def show_warranty(claim_id):
+    return getWarrantyClaimDetailHandler(claim_id)
+
+
+@admin_bp.route("/warranty/<int:claim_id>/review", methods=["PUT"])
+@logged_in_required
+@role_required("admin")
+def review_warranty(claim_id):
+    return updateWarrantyStatusHandler(claim_id, "under_review")
+
+
+@admin_bp.route("/warranty/<int:claim_id>/approve", methods=["PUT"])
+@logged_in_required
+@role_required("admin")
+def approve_warranty(claim_id):
+    return updateWarrantyStatusHandler(claim_id, "approved")
+
+
+@admin_bp.route("/warranty/<int:claim_id>/reject", methods=["PUT"])
+@logged_in_required
+@role_required("admin")
+def reject_warranty(claim_id):
+    return updateWarrantyStatusHandler(claim_id, "rejected")
+
+
+@admin_bp.route("/warranty/<int:claim_id>/resolve", methods=["PUT"])
+@logged_in_required
+@role_required("admin")
+def resolve_warranty(claim_id):
+    return updateWarrantyStatusHandler(claim_id, "resolved")
