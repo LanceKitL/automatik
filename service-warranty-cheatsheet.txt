@@ -1,0 +1,166 @@
+╔══════════════════════════════════════════════════════════════════════════════════╗
+║                   SERVICE & WARRANTY ROUTES CHEATSHEET                        ║
+║                    Automatik API  ·  Flask  ·  Session Auth                   ║
+╚══════════════════════════════════════════════════════════════════════════════════╝
+
+
+─── SERVICE SLOTS ─────────────────────────────────────────────────────────────────
+
+  METHOD  PATH                    ROLE      STATUS              DESCRIPTION
+  ──────  ─────────────────────── ────────  ───────────────────  ─────────────────────────
+  GET     /service/slots          Public    200                  List available slots with
+                                                                 remaining capacity
+
+  GET     /service/slots/<id>     Public    200 · 404            Single slot detail
+
+  POST    /service/slots          Admin     201 · 400 · 422      Create slot
+                                                                 Body: slot_datetime,
+                                                                       slot_type,
+                                                                       capacity
+
+  PUT     /service/slots/<id>     Admin     200 · 400 · 404      Update capacity or
+                                            · 409 · 422          is_available
+
+  DELETE  /service/slots/<id>     Admin     204 · 404 · 409      Delete slot
+
+
+─── SERVICE BOOKINGS ─── CUSTOMER ──────────────────────────────────────────────────
+
+  METHOD  PATH                                  ROLE       STATUS              DESCRIPTION
+  ──────  ────────────────────────────────────  ────────  ───────────────────  ──────────────────────────────
+  POST    /service/bookings                     Customer  201 · 400 · 409      Create booking. FOR UPDATE.
+                                                           · 422 · 503         Body: slot_id, vehicle_id,
+                                                                               booking_type,
+                                                                               warranty_claim_id?
+
+  GET     /service/bookings/my                  Customer  200 · 401            Own bookings (JOIN slots
+                                                                               + vehicles)
+
+  PUT     /service/bookings/<id>/cancel         Customer  200 · 403 · 404      Cancel own booking
+                                                           · 409 · 503         (restores slot capacity)
+
+
+─── SERVICE BOOKINGS ─── ADMIN ────────────────────────────────────────────────────
+
+  METHOD  PATH                                          ROLE    STATUS              DESCRIPTION
+  ──────  ────────────────────────────────────────────  ──────  ───────────────────  ──────────────────────────
+  GET     /admin/service/bookings                       Admin   200 · 401 · 403     All bookings (JOIN
+                                                                                    customer + slot + vehicle)
+
+  PUT     /admin/service/bookings/<id>/confirm          Admin   200 · 404 · 409     Confirm pending booking
+                                                                   · 503             (notifies customer)
+
+  PUT     /admin/service/bookings/<id>/complete         Admin   200 · 404 · 409     Complete confirmed booking
+                                                                   · 503
+
+
+─── WARRANTY CLAIMS ─── CUSTOMER ───────────────────────────────────────────────────
+
+  METHOD  PATH                         ROLE       STATUS              DESCRIPTION
+  ──────  ──────────────────────────── ────────  ───────────────────  ──────────────────────────────────
+  POST    /service/warranty            Customer  201 · 400 · 403      Submit claim
+                                                  · 422               Body: vehicle_id, sale_id,
+                                                                      claim_type (repair|replacement|
+                                                                      refund),
+                                                                      description (≤1000 chars)
+
+  GET     /service/warranty/my         Customer  200 · 401            Own claims (JOIN vehicles)
+
+
+─── WARRANTY CLAIMS ─── ADMIN ──────────────────────────────────────────────────────
+
+  METHOD  PATH                                   ROLE    STATUS              DESCRIPTION
+  ──────  ─────────────────────────────────────  ──────  ───────────────────  ─────────────────────────────────────
+  GET     /admin/warranty                        Admin   200 · 401 · 403     All claims (JOIN customer +
+                                                                             reviewer + vehicle)
+
+  GET     /admin/warranty/<id>                   Admin   200 · 401 · 403     Claim detail + linked service
+                                                           · 404             bookings
+
+  PUT     /admin/warranty/<id>/review            Admin   200 · 400 · 404     submitted ──→ under_review
+                                                           · 409 · 503
+
+  PUT     /admin/warranty/<id>/approve           Admin   200 · 400 · 404     under_review ──→ approved
+                                                           · 409 · 503       (notifies customer)
+
+  PUT     /admin/warranty/<id>/reject            Admin   200 · 400 · 404     under_review ──→ rejected
+                                                           · 409 · 503       Body: resolution_text (required).
+                                                                             Notifies customer.
+
+  PUT     /admin/warranty/<id>/resolve           Admin   200 · 400 · 404     approved ──→ resolved
+                                                           · 409 · 503       (sets resolved_at, notifies
+                                                                             customer)
+
+
+─── WARRANTY STATUS TRANSITION DAG ─────────────────────────────────────────────────
+
+                         ┌──────────┐
+                         │ submitted │
+                         └─────┬─────┘
+                               │
+                               ▼
+                       ┌───────────────┐
+                       │ under_review  │
+                       └───────┬───────┘
+                              / \
+                             /   \
+                            ▼     ▼
+                     ┌─────────┐ ┌──────────┐
+                     │approved │ │ rejected  │
+                     └────┬────┘ └──────────┘
+                          │
+                          ▼
+                    ┌──────────┐
+                    │ resolved │
+                    └──────────┘
+
+
+─── COMMON HTTP STATUS CODES ──────────────────────────────────────────────────────
+
+  CODE  MEANING
+  ────  ──────────────────────────────────────────────────────────
+  200   Success (GET, PUT)
+  201   Created (POST)
+  204   Deleted (DELETE — no body)
+  400   Missing or invalid field in request body
+  401   Not logged in (no active session)
+  403   Wrong role or forbidden access
+  404   Resource not found in database
+  409   Conflict — invalid state transition, slot full, duplicate
+  422   Validation failure — enum, range, or format error
+  503   Lock timeout — database resource contention, retry later
+
+
+─── REQUEST BODY FIELDS ───────────────────────────────────────────────────────────
+
+  ENDPOINT                FIELD              TYPE        NOTES
+  ──────────────────────  ─────────────────  ──────────  ────────────────────────────
+  POST /service/slots     slot_datetime      timestamp   Required
+                          slot_type          enum        Required: test_drive |
+                                                          maintenance | repair
+                          capacity           int         Default: 1. Must be ≥1
+
+  POST /service/bookings  slot_id            int         Required
+                          vehicle_id         int         Required
+                          booking_type       enum        Required: test_drive |
+                                                          maintenance | repair
+                          warranty_claim_id  int?        Optional
+
+  POST /service/warranty  vehicle_id         int         Required
+                          sale_id            int         Required. Must belong to
+                                                         current user
+                          claim_type         enum        Required: repair |
+                                                          replacement | refund
+                          description        string      Required. Max 1000 chars
+
+  PUT .../reject          resolution_text    string      Required when rejecting
+
+
+─── FILES ─────────────────────────────────────────────────────────────────────────
+
+  FILE                                        ROLE
+  ──────────────────────────────────────────  ──────────────────────────────────────
+  controllers/serviceController.py           All handler logic
+  routes/service.py                          Customer & public routes
+  routes/admin.py                            Admin routes (imports from controller)
+  app.py                                     Blueprint registration
