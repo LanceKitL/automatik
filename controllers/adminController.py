@@ -268,7 +268,7 @@ def get_customer_with(customer_id):
                          fetch="one")
     
     if not customer:
-        return jsonify({"message": f"customer with id[{customer_id}] not found."})
+        return jsonify({"message": f"customer with id[{customer_id}] not found."}), 404
 
     
     return jsonify({"data": customer}), 200

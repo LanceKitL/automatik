@@ -9,6 +9,7 @@ from services.mail_service import init_mail
 from datetime import timedelta
 from flask_cors import CORS
 from config import MailConfig
+from utils.socket_handler import socketio
 import os
 
 #routes
@@ -18,6 +19,7 @@ from routes.vehicles import vehicles_bp
 from routes.inquiries import inquiry_bp
 from routes.supplier import supplier_bp
 from routes.profile import profile_bp
+from routes.notification import notif_bp
 
 app = Flask(__name__)
 
@@ -39,6 +41,7 @@ app.secret_key = session_secret
 
 app.config.from_object(MailConfig)
 init_mail(app)
+socketio.init_app(app)
 
 #routes
 app.register_blueprint(admin_bp, url_prefix="/admin")
@@ -47,6 +50,7 @@ app.register_blueprint(vehicles_bp, url_prefix="/vehicle")
 app.register_blueprint(inquiry_bp, url_prefix="/inquiry")
 app.register_blueprint(supplier_bp, url_prefix="/supplier")
 app.register_blueprint(profile_bp, url_prefix="/profile")
+app.register_blueprint(notif_bp, url_prefix="/notification")
 
 #404 not found page
 @app.errorhandler(404)
@@ -79,4 +83,4 @@ def indexLogs():
     
 
 if __name__ == "__main__":
-    app.run(debug=debug, host="0.0.0.0")
+   socketio.run(app, debug=True)

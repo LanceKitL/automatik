@@ -1,6 +1,6 @@
 from werkzeug.security import check_password_hash, generate_password_hash
 from utils.token_helper import EmailVerificationToken
-from flask import session, jsonify, request, render_template, abort, flash
+from flask import session, jsonify, request, render_template, abort
 from services.mail_service import send_email_verification, welcome_user
 from datetime import datetime, timezone
 from conn import run_query, get_db, Error
@@ -14,7 +14,7 @@ def me():
     role = session["role"]
 
     response = run_query("""
-                        SELECT username,email,role FROM users 
+                        SELECT user_id,username,email,role FROM users 
                          WHERE user_id = %s
                          AND role = %s
                         """,
@@ -22,7 +22,7 @@ def me():
                         fetch="one")
     
     if not response:
-        return jsonify({"message": "no user found."})
+        return jsonify({"message": "no user found."}), 404
 
     return jsonify({
         "message": response,
@@ -143,20 +143,21 @@ def customerAccountHandler():
     res = run_query(query,param)
 
     # create customer_details too
-    run_query("""
+    customer_created = run_query("""
               INSERT INTO customer_details (user_id, customer_number) 
               VALUES (%s,%s) 
               """,
               (res, f"CUST-{datetime.now().year}-{res}"))
 
-    audit = audit_log(
+    audit_log(
         session["user"],
         "POST", 
         "customer", 
         res
         )
     
-    if not res and not audit:
+    # Check both inserts succeeded; audit_log always returns True so it's excluded from the condition
+    if not res or not customer_created:
         return jsonify({"message": "customer account creation failed."}), 400
     
     return jsonify({
@@ -346,35 +347,30 @@ def logoutHandler():
 
 
 def resendVerification(email):
-    #generates new token and a link to send
+    # Return JSON instead of HTML for API consistency
     if not email:
-        abort(403)
-    
-    # first -> get the user with the that email
-    # verify if there's actually a user with that email
-    # use the user_id for generating new token
-    user_id = run_query("""
+        return jsonify({"message": "Email is required."}), 400
+
+    user_row = run_query("""
                         SELECT user_id FROM users 
-                        WHERE email =%s
+                        WHERE email = %s
                         """,
                         (email,),
                         fetch="one")
 
-    if not user_id:
-        abort(404) 
-        
-    token = EmailVerificationToken(user_id)
-    
-    if not token:
-        abort(500)
-    
-    link = f"http://{get_local_ip()}:5000/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}"
+    if not user_row:
+        return jsonify({"message": "User with that email not found."}), 404
 
-    send_email_verification(email,email.split('@')[0],link)
-    
-    flash("Verification email has been resent successfully.", "success")
-    
-    return render_template('email_verification_error.html')
+    user_id = user_row["user_id"]
+    token = EmailVerificationToken(user_id)
+
+    if not token:
+        return jsonify({"message": "Token generation failed."}), 500
+
+    link = f"http://{get_local_ip()}:5000/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}"
+    send_email_verification(email, email.split('@')[0], link)
+
+    return jsonify({"message": "Verification email resent successfully."}), 200
     
 
 def verifyEmail():

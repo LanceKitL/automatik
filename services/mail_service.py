@@ -32,4 +32,11 @@ def welcome_user(email, template):
     msg.html = render_template(template, email=email)
     mail.send(msg)
 
-
+def inquiry_received(email):
+    msg = Message(
+        sender=("AutoMatik", "AutoMatik@services.com"),
+        subject="Hi there, we have received your Inquiry!",
+        body="Thank you so much!",
+        recipients=[email]
+    )
+    mail.send(msg)

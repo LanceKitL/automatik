@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<!-- TEMPORARY: Remove this file and routes when done testing -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notification Test</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+        #status { padding: 0.5rem 1rem; border-radius: 4px; display: inline-block; }
+        #status.connected { background: #dcfce7; color: #166534; }
+        #status.disconnected { background: #fee2e2; color: #991b1b; }
+        .badge { background: #2563eb; color: #fff; border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.8rem; margin-left: 0.5rem; }
+        ul { list-style: none; padding: 0; }
+        li { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
+        li .body { flex: 1; }
+        li .body .title { font-weight: 600; }
+        li .body .meta { font-size: 0.8rem; color: #6b7280; margin-top: 0.15rem; }
+        li button { background: transparent; border: 1px solid #d1d5db; border-radius: 4px; padding: 0.25rem 0.6rem; font-size: 0.75rem; cursor: pointer; white-space: nowrap; }
+        li button:hover { background: #e5e7eb; }
+    </style>
+</head>
+<body>
+    <h1>
+        Socket.IO Notification Test
+        <span id="unreadBadge" class="badge" style="display:none">0</span>
+    </h1>
+    <div id="status" class="disconnected">Disconnected</div>
+
+    <h2 style="margin-bottom:0.5rem">Notifications</h2>
+    <ul id="notifications"></ul>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+  const statusEl = document.getElementById('status');
+  const listEl = document.getElementById('notifications');
+  const badgeEl = document.getElementById('unreadBadge');
+
+  /* ---------- helpers ---------- */
+
+  function setStatus(text, connected) {
+    statusEl.textContent = text;
+    statusEl.className = connected ? 'connected' : 'disconnected';
+  }
+
+  function updateBadge() {
+    const count = listEl.children.length;
+    if (count > 0) {
+      badgeEl.textContent = count;
+      badgeEl.style.display = 'inline';
+    } else {
+      badgeEl.style.display = 'none';
+    }
+  }
+
+  function addNotificationItem(id, title, message, channel, createdAt) {
+    // Avoid duplicates
+    if (document.getElementById('notif-' + id)) return;
+
+    const li = document.createElement('li');
+    li.id = 'notif-' + id;
+
+    li.innerHTML = `
+      <div class="body">
+        <div class="title">${escapeHtml(title)}</div>
+        <div>${escapeHtml(message)}</div>
+        <div class="meta">${channel ? '[' + escapeHtml(channel) + '] ' : ''}${createdAt ? new Date(createdAt).toLocaleString() : ''}</div>
+      </div>
+      <button onclick="markRead(${id})">Mark read</button>
+    `;
+
+    listEl.prepend(li);
+    updateBadge();
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  /* ---------- mark as read ---------- */
+
+  async function markRead(id) {
+    try {
+      const res = await fetch('/notification/read/' + id, { method: 'PUT' });
+      if (res.ok) {
+        const el = document.getElementById('notif-' + id);
+        if (el) el.remove();
+        updateBadge();
+      }
+    } catch (err) {
+      console.error('Failed to mark as read', err);
+    }
+  }
+
+  /* ---------- load existing unread on page load ---------- */
+
+  async function loadUnread() {
+    try {
+      const res = await fetch('/notification/list');
+      if (!res.ok) return;
+      const notifs = await res.json();
+      for (const n of notifs) {
+        addNotificationItem(n.id, n.title, n.message, n.channel, n.created_at);
+      }
+    } catch (err) {
+      console.error('Failed to load notifications', err);
+    }
+  }
+
+  /* ---------- Socket.IO ---------- */
+
+  const socket = io(window.location.origin);
+
+  socket.on('connect', () => {
+    setStatus('Connected: ' + socket.id, true);
+    console.log('Connected', socket.id);
+  });
+
+  socket.on('connected', data => {
+    console.log('Server says:', data.msg);
+  });
+
+  socket.on('notification', data => {
+    console.log('Notification:', data);
+    // Real-time notifications may not have an id yet — fetch list to stay in sync
+    loadUnread();
+  });
+
+  socket.on('disconnect', () => {
+    setStatus('Disconnected', false);
+  });
+
+  /* ---------- init ---------- */
+
+  loadUnread();
+</script>
+
+</body>
+</html>
