@@ -23,6 +23,7 @@ from routes.notification import notif_bp
 from routes.agent import agent_bp
 from routes.financing import financing_bp, loans_bp
 from routes.documents import documents_bp, portal_bp
+from routes.sales import sales_bp
 
 app = Flask(__name__)
 
@@ -59,6 +60,7 @@ app.register_blueprint(financing_bp, url_prefix="/admin/loans")
 app.register_blueprint(loans_bp, url_prefix="/loans")
 app.register_blueprint(documents_bp, url_prefix="/admin/documents")
 app.register_blueprint(portal_bp, url_prefix="/portal")
+app.register_blueprint(sales_bp, url_prefix="/admin/sales")
 
 #404 not found page
 @app.errorhandler(404)
