@@ -21,6 +21,9 @@ from routes.supplier import supplier_bp
 from routes.profile import profile_bp
 from routes.notification import notif_bp
 from routes.agent import agent_bp
+from routes.financing import financing_bp, loans_bp
+from routes.documents import documents_bp, portal_bp
+from routes.sales import sales_bp
 
 app = Flask(__name__)
 
@@ -53,6 +56,11 @@ app.register_blueprint(supplier_bp, url_prefix="/supplier")
 app.register_blueprint(profile_bp, url_prefix="/profile")
 app.register_blueprint(notif_bp, url_prefix="/notification")
 app.register_blueprint(agent_bp)
+app.register_blueprint(financing_bp, url_prefix="/admin/loans")
+app.register_blueprint(loans_bp, url_prefix="/loans")
+app.register_blueprint(documents_bp, url_prefix="/admin/documents")
+app.register_blueprint(portal_bp, url_prefix="/portal")
+app.register_blueprint(sales_bp, url_prefix="/admin/sales")
 
 #404 not found page
 @app.errorhandler(404)
