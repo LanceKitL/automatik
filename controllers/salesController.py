@@ -338,7 +338,7 @@ def createSalesContracts():
  PLACEHOLDERS = []
  INPUT_DATA = []
  
- sale = run_query("SELECT sale_id FROM sales WHERE sale_id = %s", (SalesContracts_fields["sale_id"],), fetch="one")
+ sale = run_query("SELECT sale_id FROM sales_contracts WHERE sale_id = %s", (SalesContracts_fields["sale_id"],), fetch="one")
  if sale:
         return jsonify({"message": "Sale Already Exists."}), 404
 
@@ -419,6 +419,10 @@ def createInsuranceRecord():
         "policy_number": data.get("policy_number"),
         "coverage_type": data.get("coverage_type"),
     }
+    
+    sale = run_query("SELECT sale_id FROM sales_contracts WHERE sale_id = %s", (Insurance_fields["sale_id"],), fetch="one")
+    if sale:
+        return jsonify({"message": "Sale Already Exists."}), 404
     
     INPUT_FIELDS = []
     PLACEHOLDERS = []
