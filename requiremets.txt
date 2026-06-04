@@ -1,0 +1,7 @@
+flask
+flask_cors
+mysql-connector-python
+openai
+python-dotenv
+flask_mail
+python-dateutil
