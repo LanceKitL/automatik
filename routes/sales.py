@@ -3,8 +3,8 @@ from validators.middleware import role_required, logged_in_required
 from controllers.salesController import (
     listSales, getSale, createSale, updateSaleStatus,
     getMySales, getMySale,
-    getSaleContract, createContract, signContract,
-    listInsurance, addInsurance, updateInsurance,
+    getSaleContract, createSalesContracts, signContract,
+    listInsurance, createInsuranceRecord, updateInsuranceRecord,
     listLoans, getLoan, createLoan, updateLoanStatus, getLoanSchedule, getMyLoans,
     updateAmortizationStatus, getOverdueAmortizations, recomputeAmortization
 )
@@ -51,10 +51,10 @@ def my_sale(sale_id): return getMySale(sale_id)
 @role_required("admin", "agent")
 def show_contract(sale_id): return getSaleContract(sale_id)
 
-@sales_bp.route("/admin/sales/<int:sale_id>/contract", methods=["POST"])
+@sales_bp.route("/admin/sales/contract", methods=["POST"])
 @logged_in_required
 @role_required("admin")
-def create_new_contract(sale_id): return createContract(sale_id)
+def create_new_contract(): return createSalesContracts()
 
 @sales_bp.route("/admin/sales/<int:sale_id>/contract/sign", methods=["PUT"])
 @logged_in_required
@@ -67,15 +67,15 @@ def sign_sale_contract(sale_id): return signContract(sale_id)
 @role_required("admin")
 def index_insurance(): return listInsurance()
 
-@sales_bp.route("/admin/sales/<int:sale_id>/insurance", methods=["POST"])
+@sales_bp.route("/admin/sales/insurance", methods=["POST"])
 @logged_in_required
 @role_required("admin")
-def create_insurance(sale_id): return addInsurance(sale_id)
+def create_insurance(): return createInsuranceRecord()
 
 @sales_bp.route("/admin/insurance/<int:insurance_id>", methods=["PUT"])
 @logged_in_required
 @role_required("admin")
-def update_insurance(insurance_id): return updateInsurance(insurance_id)
+def update_insurance(insurance_id): return updateInsuranceRecord(insurance_id)
 
 # Loans — Admin
 @sales_bp.route("/admin/loans", methods=["GET"])

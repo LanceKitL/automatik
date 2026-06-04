@@ -41,7 +41,7 @@ def generate_amortization_schedule(cursor, loan_id, loan_amount, interest_rate, 
 
     cursor.executemany("""
         INSERT INTO amortization_schedule
-        (loan_id, period_number, due_date, amount_due, principal_component, interest_component, remaining_balance, status)
+        (loan_id, month_number, due_date, total_due, principal, interest, running_balance, status)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
     """, rows)
 
@@ -89,6 +89,8 @@ def listSales():
         params.append(date_to)
 
     query += " ORDER BY s.sale_date DESC"
+    
+    
     result = run_query(query, tuple(params), fetch="all")
     return jsonify({"data": result}), 200
 
@@ -127,7 +129,7 @@ def createSale():
     customer_id = data.get("customer_id")
     agent_id = data.get("agent_id")
     payment_type = data.get("payment_type")
-    selling_price = data.get("selling_price")
+    selling_price = data.get("selling_price")   
 
     if not all([vehicle_id, customer_id, payment_type, selling_price]):
         return jsonify({"message": "vehicle_id, customer_id, payment_type, and selling_price are required."}), 400
@@ -166,17 +168,20 @@ def createSale():
                 return jsonify({"message": "Agent account is inactive."}), 400
 
         if payment_type == "installment":
+            down_payment = data.get("down_payment")
             loan_amount = data.get("loan_amount")
             term_months = data.get("term_months")
             interest_rate = data.get("interest_rate")
-            if not all([loan_amount, term_months, interest_rate]):
-                return jsonify({"message": "loan_amount, term_months, and interest_rate are required for installment."}), 422
+            bank_name = data.get("bank_name")
+            if not all([loan_amount, term_months, interest_rate, bank_name, down_payment]):
+                return jsonify({"message": "loan_amount, term_months, interest_rate, bank_name, and down_payment are required for installment."}), 422
             try:
                 loan_amount = float(loan_amount)
                 term_months = int(term_months)
                 interest_rate = float(interest_rate)
+                down_payment = float(down_payment)
             except (TypeError, ValueError):
-                return jsonify({"message": "loan_amount, term_months, and interest_rate must be numbers."}), 422
+                return jsonify({"message": "loan_amount, term_months, interest_rate, and down_payment must be numbers."}), 422
             if loan_amount <= 0 or loan_amount > selling_price:
                 return jsonify({"message": "loan_amount must be > 0 and <= selling_price."}), 422
             if term_months < 6 or term_months > 60:
@@ -195,9 +200,9 @@ def createSale():
 
         if payment_type == "installment":
             loan_id = run_query("""
-                INSERT INTO loan_details (sale_id, loan_amount, interest_rate, term_months, bank_approval_status)
-                VALUES (%s,%s,%s,%s,'pending')""",
-                (sale_id, loan_amount, interest_rate, term_months), conn=conn, cursor=cursor)
+                INSERT INTO loan_details (sale_id, loan_amount, interest_rate, term_months, bank_name, down_payment, bank_approval_status)
+                VALUES (%s,%s,%s,%s,%s,%s,'pending')""",
+                (sale_id, loan_amount, interest_rate, term_months, bank_name, down_payment), conn=conn, cursor=cursor)
             generate_amortization_schedule(cursor, loan_id, loan_amount, interest_rate, term_months, sale_date)
 
         run_query("INSERT INTO sales_contracts (sale_id, status) VALUES (%s,'draft')", (sale_id,), conn=conn, cursor=cursor)
@@ -222,7 +227,14 @@ def createSale():
             send_sale_confirmation(customer_email, name, sale_id, vehicle_name, selling_price)
         except Exception:
             pass
-
+        
+        audit_log(
+            id=session["user"],
+            action="POST",
+            tablename="sales",
+            record_id=sale_id,
+            new_value=json.dumps({"sale_id": sale_id}, default=str),
+        )
         return jsonify({"sale_id": sale_id}), 201
 
     except Error as e:
@@ -231,6 +243,7 @@ def createSale():
     finally:
         cursor.close()
         conn.close()
+        
 
 
 def updateSaleStatus(sale_id):
@@ -240,7 +253,7 @@ def updateSaleStatus(sale_id):
     if not new_status:
         return jsonify({"message": "status is required."}), 400
 
-    valid_transitions = {"pending": ["completed", "cancelled"], "completed": [], "cancelled": []}
+    valid_transitions = {"pending": ["completed", "cancelled", "active"], "completed": [], "cancelled": [], "active": ["completed", "cancelled"]}
     sale = run_query("SELECT * FROM sales WHERE sale_id = %s", (sale_id,), fetch="one")
 
     if not sale:
@@ -313,21 +326,53 @@ def getSaleContract(sale_id):
     return jsonify({"data": contract}), 200
 
 
-def createContract(sale_id):
-    sale = run_query("SELECT * FROM sales WHERE sale_id = %s", (sale_id,), fetch="one")
-    if not sale:
-        return jsonify({"message": "Sale not found."}), 404
+def createSalesContracts():
+    
+ data = request.get_json(silent=True) or {}
+ SalesContracts_fields = {
+       
+        "sale_id": data.get("sale_id"),
+        "contract_url": data.get("contract_url")
+    }
+ INPUT_FIELDS = []
+ PLACEHOLDERS = []
+ INPUT_DATA = []
+ 
+ sale = run_query("SELECT sale_id FROM sales WHERE sale_id = %s", (SalesContracts_fields["sale_id"],), fetch="one")
+ if sale:
+        return jsonify({"message": "Sale Already Exists."}), 404
 
-    existing = run_query("SELECT contract_id FROM sales_contracts WHERE sale_id = %s", (sale_id,), fetch="one")
-    if existing:
-        return jsonify({"message": "Contract already exists for this sale."}), 409
+ for field_name, value in SalesContracts_fields.items():
+        if value is not None:
+            # append the ff input fields
+            INPUT_FIELDS.append(field_name)
+            PLACEHOLDERS.append("%s")
+            INPUT_DATA.append(value)
+    
+ if not "sale_id" in INPUT_FIELDS:
+        return jsonify({"message": "sale_id is required."}), 400
+ 
+ if not "contract_url" in INPUT_FIELDS:
+        return jsonify({"message": "contract_url is required."}), 400
 
-    contract_id = run_query("INSERT INTO sales_contracts (sale_id, status) VALUES (%s,'draft')", (sale_id,))
-
-    audit_log(session["user"], "POST", "sales_contracts", contract_id, None, json.dumps({"sale_id": sale_id, "status": "draft"}, default=str))
-
-    return jsonify({"contract_id": contract_id}), 201
-
+ query = f"""
+                INSERT INTO sales_contracts ({", ".join(INPUT_FIELDS)}, status, created_at  )
+                VALUES ({", ".join(PLACEHOLDERS)}, 'draft' ,current_timestamp());
+                """
+ sales = run_query(query, INPUT_DATA)
+    
+ if not sales:
+     return jsonify({"message": "Execution failed"}), 400
+ 
+ audit_log(
+            id=session["user"],
+            action="POST",
+            tablename="sales_contracts",
+            record_id=sales,
+            new_value=json.dumps(SalesContracts_fields, default=str),
+        )
+    
+ return jsonify({"message": "Creation Complete"})
 
 def signContract(sale_id):
     sale = run_query("SELECT sale_id, status FROM sales WHERE sale_id = %s", (sale_id,), fetch="one")
@@ -365,70 +410,125 @@ def listInsurance():
     return jsonify({"data": result}), 200
 
 
-def addInsurance(sale_id):
-    sale = run_query("SELECT sale_id FROM sales WHERE sale_id = %s", (sale_id,), fetch="one")
-    if not sale:
-        return jsonify({"message": "Sale not found."}), 404
-
+def createInsuranceRecord():
     data = request.get_json(silent=True) or {}
-    provider = data.get("provider")
-    policy_number = data.get("policy_number")
-    coverage_start = data.get("coverage_start")
-    coverage_end = data.get("coverage_end")
+    
+    Insurance_fields = {
+        "sale_id": data.get("sale_id"),
+        "provider_name": data.get("provider_name"),
+        "policy_number": data.get("policy_number"),
+        "coverage_type": data.get("coverage_type"),
+    }
+    
+    INPUT_FIELDS = []
+    PLACEHOLDERS = []
+    INPUT_DATA = []
 
-    if not all([provider, policy_number, coverage_start, coverage_end]):
-        return jsonify({"message": "provider, policy_number, coverage_start, and coverage_end are required."}), 400
+    for field_name, value in Insurance_fields.items():
+        if value is not None:
+            # append the ff input fields
+            INPUT_FIELDS.append(field_name)
+            PLACEHOLDERS.append("%s")
+            INPUT_DATA.append(value)
+    
+    
+    if not "sale_id" in INPUT_FIELDS:
+        return jsonify({"message": "sale_id is required."}), 400
+    if not "provider_name" in INPUT_FIELDS:
+        return jsonify({"message": "provider_name is required."}), 400
+    if not "policy_number" in INPUT_FIELDS:
+        return jsonify({"message": "policy_number is required."}), 400
+    if not "coverage_type" in INPUT_FIELDS:
+        return jsonify({"message": "coverage_type is required."}), 400
+   
 
-    insurance_id = run_query("""
-        INSERT INTO insurance_records (sale_id, provider, policy_number, coverage_start, coverage_end)
-        VALUES (%s,%s,%s,%s,%s)
-    """, (sale_id, provider, policy_number, coverage_start, coverage_end))
+    sale_row = run_query("SELECT sale_id, vehicle_id, customer_id FROM sales WHERE sale_id = %s", 
+                         (Insurance_fields["sale_id"],), fetch="one")
+    if not sale_row:
+            return jsonify({"message": "Invalid sale_id. The sale does not exist."}), 400
 
-    audit_log(session["user"], "POST", "insurance_records", insurance_id, None, json.dumps(data, default=str))
+        # ensure that vehicle_id and customer_id are included 
+    if "vehicle_id" not in INPUT_FIELDS:
+            INPUT_FIELDS.append("vehicle_id")
+            PLACEHOLDERS.append("%s")
+            INPUT_DATA.append(sale_row.get("vehicle_id"))
+    if "customer_id" not in INPUT_FIELDS:
+            INPUT_FIELDS.append("customer_id")
+            PLACEHOLDERS.append("%s")
+            INPUT_DATA.append(sale_row.get("customer_id"))
 
-    return jsonify({"insurance_id": insurance_id}), 201
+    query = f"""
+                INSERT INTO insurance_records ({", ".join(INPUT_FIELDS)})
+                VALUES ({", ".join(PLACEHOLDERS)});
+                """
+    insurance_record = run_query(query, INPUT_DATA)
+    
+    if not insurance_record:
+        return jsonify({"message": "Execution failed"}), 400
+    
+    audit_log(
+            id=session["user"],
+            action="POST",
+            tablename="insurance_records",
+            record_id=insurance_record,
+            new_value=json.dumps(Insurance_fields, default=str),
+        )
+    
+    return jsonify({"message": "Insurance record created successfully!"}), 200
 
 
-def updateInsurance(insurance_id):
+def updateInsuranceRecord(insurance_id):
     data = request.get_json(silent=True) or {}
-    existing = run_query("SELECT * FROM insurance_records WHERE insurance_id = %s", (insurance_id,), fetch="one")
+    
+    status = data.get("status")
+    start_date = data.get("start_date")
+    end_date = data.get("end_date")
 
-    if not existing:
+    if not insurance_id:
+        return jsonify({"message": "insurance_id is required in URL."}), 400
+
+    existing_record = run_query("SELECT * FROM insurance_records WHERE insurance_id = %s",
+                                (insurance_id,), fetch="one")
+
+    if not existing_record:
         return jsonify({"message": "Insurance record not found."}), 404
 
-    provider = data.get("provider")
-    coverage_start = data.get("coverage_start")
-    coverage_end = data.get("coverage_end")
-    status = data.get("status")
+    update_fields = []
+    update_values = []
 
-    updates = []
-    params = []
-
-    if provider is not None:
-        updates.append("provider = %s")
-        params.append(provider)
-    if coverage_start is not None:
-        updates.append("coverage_start = %s")
-        params.append(coverage_start)
-    if coverage_end is not None:
-        updates.append("coverage_end = %s")
-        params.append(coverage_end)
     if status is not None:
-        if status not in ("active", "expired", "cancelled"):
-            return jsonify({"message": "status must be 'active', 'expired', or 'cancelled'."}), 422
-        updates.append("status = %s")
-        params.append(status)
+        update_fields.append("status = %s")
+        update_values.append(status)
+    if start_date is not None:
+        update_fields.append("start_date = %s")
+        update_values.append(start_date)
+    if end_date is not None:
+        update_fields.append("end_date = %s")
+        update_values.append(end_date)
 
-    if not updates:
-        return jsonify({"message": "No fields to update."}), 400
+    if not update_fields:
+        return jsonify({"message": "No updatable fields provided. Provide status, start_date or end_date."}), 400
 
-    params.append(insurance_id)
-    run_query(f"UPDATE insurance_records SET {', '.join(updates)} WHERE insurance_id = %s", tuple(params))
+    update_values.append(insurance_id)
+    query = f"UPDATE insurance_records SET {', '.join(update_fields)} WHERE insurance_id = %s"
+    updated_rows = run_query(query, tuple(update_values))
 
-    audit_log(session["user"], "PUT", "insurance_records", insurance_id, json.dumps(existing, default=str), json.dumps(data, default=str))
+    if not updated_rows:
+        return jsonify({"message": "Update failed."}), 400
 
-    return jsonify({"message": "Insurance record updated."}), 200
+    audit_log(
+        id=session["user"],
+        action="PUT",
+        tablename="insurance_records",
+        record_id=insurance_id,
+        new_value=json.dumps({
+            "status": status,
+            "start_date": start_date,
+            "end_date": end_date
+        }, default=str),
+    )
 
+    return jsonify({"message": "Insurance record updated successfully!"}), 200
 
 # --- LOANS ---
 
@@ -467,7 +567,7 @@ def getLoan(loan_id):
     schedule = run_query("""
         SELECT * FROM amortization_schedule
         WHERE loan_id = %s
-        ORDER BY period_number
+        ORDER BY month _number
     """, (loan_id,), fetch="all")
 
     loan["amortization_schedule"] = schedule
@@ -487,19 +587,22 @@ def createLoan(sale_id):
         return jsonify({"message": "Loan already exists for this sale."}), 409
 
     data = request.get_json(silent=True) or {}
+    down_payment = data.get("down_payment")
     loan_amount = data.get("loan_amount")
     interest_rate = data.get("interest_rate")
     term_months = data.get("term_months")
+    bank_name = data.get("bank_name")
 
-    if not all([loan_amount, interest_rate, term_months]):
-        return jsonify({"message": "loan_amount, interest_rate, and term_months are required."}), 400
+    if not all([loan_amount, interest_rate, term_months, bank_name, down_payment]):
+        return jsonify({"message": "loan_amount, interest_rate, term_months, bank_name, and down_payment are required."}), 400
 
     try:
         loan_amount = float(loan_amount)
         interest_rate = float(interest_rate)
         term_months = int(term_months)
+        down_payment = float(down_payment)
     except (TypeError, ValueError):
-        return jsonify({"message": "loan_amount, interest_rate, and term_months must be numbers."}), 422
+        return jsonify({"message": "loan_amount, interest_rate, term_months, and down_payment must be numbers."}), 422
 
     if loan_amount <= 0 or loan_amount > float(sale["selling_price"]):
         return jsonify({"message": "loan_amount must be > 0 and <= selling_price."}), 422
@@ -511,9 +614,9 @@ def createLoan(sale_id):
     conn, cursor = get_db()
     try:
         loan_id = run_query("""
-            INSERT INTO loan_details (sale_id, loan_amount, interest_rate, term_months, bank_approval_status)
-            VALUES (%s,%s,%s,%s,'pending')
-        """, (sale_id, loan_amount, interest_rate, term_months), conn=conn, cursor=cursor)
+            INSERT INTO loan_details (sale_id, loan_amount, interest_rate, term_months, bank_name, down_payment, bank_approval_status)
+            VALUES (%s,%s,%s,%s,%s,%s,'pending')
+        """, (sale_id, loan_amount, interest_rate, term_months, bank_name, down_payment), conn=conn, cursor=cursor)
 
         sale_date = sale["sale_date"] if sale["sale_date"] else datetime.now()
         generate_amortization_schedule(cursor, loan_id, loan_amount, interest_rate, term_months, sale_date)
@@ -526,6 +629,7 @@ def createLoan(sale_id):
     finally:
         cursor.close()
         conn.close()
+    return jsonify({"message": "Loan created successfully.", "loan_id": loan_id}), 201
 
 
 def updateLoanStatus(loan_id):
@@ -597,7 +701,7 @@ def getMyLoans():
         schedule = run_query("""
             SELECT * FROM amortization_schedule
             WHERE loan_id = %s
-            ORDER BY period_number
+            ORDER BY month_number
         """, (loan["loan_id"],), fetch="all")
         loan["amortization_schedule"] = schedule
 
@@ -632,7 +736,7 @@ def updateAmortizationStatus(schedule_id):
     old_value = schedule["status"]
     run_query("UPDATE amortization_schedule SET status = %s WHERE schedule_id = %s", (status, schedule_id))
 
-    fire_notif(user_id=schedule.get("user_id"), title="Amortization Updated", message=f"Amortization period #{schedule['period_number']} marked as {status}.", channel="in_app", ref_type="amortization_schedule", ref_id=schedule_id)
+    fire_notif(user_id=schedule.get("user_id"), title="Amortization Updated", message=f"Amortization period #{schedule['month_number']} marked as {status}.", channel="in_app", ref_type="amortization_schedule", ref_id=schedule_id)
 
     return jsonify({"message": f"Amortization status updated to '{status}'."}), 200
 
@@ -675,7 +779,7 @@ def recomputeAmortization(loan_id):
         paid = run_query("""
             SELECT COALESCE(SUM(principal_component), 0) AS paid_principal,
                    COUNT(*) AS paid_count,
-                   MAX(period_number) AS last_paid_period
+                   MAX(month_number) AS last_paid_period
             FROM amortization_schedule
             WHERE loan_id = %s AND status = 'paid'
         """, (loan_id,), fetch="one", conn=conn, cursor=cursor)
