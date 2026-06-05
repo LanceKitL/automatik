@@ -31,59 +31,116 @@ def get_profile():
 def update_profile():
     """
     [LOGIN REQUIRED]
-    update own user_profile fields.
-    allowed fields: [full_name,phone_number,address,city,province,zip_code,date_of_birth,gender]
+    Update own profile information.
     """
-    # get the current signed_in user
-    user_id = session["user"]
 
+    user_id = session.get("user")
+    role = session.get("role")
+
+    if not user_id:
+        return jsonify({"message": "Unauthorized"}), 401
 
     data = request.get_json(silent=True) or {}
-    
-    full_name = data.get("full_name")
-    phone_number = data.get("phone_number")
-    address = data.get("address")
-    city = data.get("city")
-    province = data.get("province")
-    zip_code = data.get("zip_code")
-    date_of_birth = data.get("date_of_birth")
-    gender = data.get("gender")
 
-    allowed_fields = {
-        "full_name": full_name,
-        "phone_number": phone_number,
-        "address": address,
-        "city": city,
-        "province": province,
-        "zip_code": zip_code,
-        "date_of_birth": date_of_birth,
-        "gender": gender,
+    # Fields in user_profile table
+    profile_fields = {
+        "full_name": data.get("full_name"),
+        "phone_number": data.get("phone_number"),
+        "address": data.get("address"),
+        "city": data.get("city"),
+        "province": data.get("province"),
+        "zip_code": data.get("zip_code"),
+        "date_of_birth": data.get("date_of_birth"),
+        "gender": data.get("gender"),
     }
 
-    update = []
-    params = []
     updated_fields = []
 
-    for field_name, value in allowed_fields.items():
+    # -------------------------
+    # Update user_profile
+    # -------------------------
+    profile_updates = []
+    profile_params = []
+
+    for field, value in profile_fields.items():
         if value is not None:
-            update.append(f"{field_name} = %s")
-            params.append(value)
-            updated_fields.append(field_name)
+            profile_updates.append(f"{field} = %s")
+            profile_params.append(value)
+            updated_fields.append(field)
 
-    if not update:
-        return jsonify({"message": "no fields to update."}), 400
-    
-    params.append(user_id)
+    if profile_updates:
+        profile_params.append(user_id)
 
-    sql = f"""
-        UPDATE user_profile
-        SET {', '.join(update)}
-        WHERE user_id = %s
+        sql = f"""
+            UPDATE user_profile
+            SET {', '.join(profile_updates)}
+            WHERE user_id = %s
         """
 
-    run_query(sql, params)
+        run_query(sql, profile_params)
+
+    # -------------------------
+    # Update customer_details
+    # -------------------------
+    if role == "customer":
+        PAYMENT_METHODS = {"cash", "installments", "bank_transfer"}
+        CONTACT_METHODS = {"email", "sms", "in_app"}
+
+        preferred_payment_method = data.get("preferred_payment_method")
+        preferred_contact_method = data.get("preferred_contact_method")
+
+        if (
+            preferred_payment_method is not None
+            and preferred_payment_method not in PAYMENT_METHODS
+        ):
+            return jsonify({
+                "message": f"Invalid preferred_payment_method. Allowed values: {list(PAYMENT_METHODS)}"
+            }), 400
+
+        if (
+            preferred_contact_method is not None
+            and preferred_contact_method not in CONTACT_METHODS
+        ):
+            return jsonify({
+                "message": f"Invalid preferred_contact_method. Allowed values: {list(CONTACT_METHODS)}"
+            }), 400
+
+        customer_fields = {
+            "customer_number": data.get("customer_number"),
+            "preferred_contact_method": preferred_contact_method,
+            "preferred_payment_method": preferred_payment_method,
+            "notes": data.get("notes"),
+        }
+
+        customer_updates = []
+        customer_params = []
+
+        for field, value in customer_fields.items():
+            if value is not None:
+                customer_updates.append(f"{field} = %s")
+                customer_params.append(value)
+                updated_fields.append(field)
+
+        if customer_updates:
+            customer_params.append(user_id)
+
+            sql = f"""
+                UPDATE customer_details
+                SET {', '.join(customer_updates)}
+                WHERE user_id = %s
+            """
+
+            run_query(sql, customer_params)
+
+    # -------------------------
+    # Final response
+    # -------------------------
+    if not updated_fields:
+        return jsonify({
+            "message": "No fields to update."
+        }), 400
 
     return jsonify({
-        "message": "updated succesfully!",
+        "message": "Updated successfully!",
         "updated_fields": updated_fields
-        })
+    }), 200
