@@ -52,10 +52,11 @@ def insert_agent_commission(cursor, sale_id, agent_id, selling_price):
     cursor.execute("SELECT default_commission_rate FROM agent_details WHERE user_id = %s", (agent_id,))
     agent = cursor.fetchone()
     
-    if agent and agent.get("default_commission_rate"):
-        rate = Decimal(str(agent["default_commission_rate"]))
-    else:
-        rate = Decimal("3.0")
+    if agent:
+        if isinstance(agent, dict) and agent.get("default_commission_rate"):
+            rate = Decimal(str(agent["default_commission_rate"]))
+        elif isinstance(agent, tuple) and agent[0] is not None:
+            rate = Decimal(str(agent[0]))
         
     selling_price_dec = Decimal(str(selling_price))
     amount = (selling_price_dec * rate / Decimal("100")).quantize(Decimal("0.01"), ROUND_HALF_UP)
@@ -222,8 +223,8 @@ def createSale():
         if agent_id:
             try:
                 insert_agent_commission(cursor, sale_id, agent_id, selling_price)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"COMMISSION ERROR for Sale {sale_id}: {str(e)}")
 
         conn.commit()
 
@@ -233,9 +234,9 @@ def createSale():
         vehicle_info = run_query("SELECT brand, model FROM vehicles WHERE vehicle_id = %s", (vehicle_id,), fetch="one", conn=conn, cursor=cursor)
         vehicle_name = f"{vehicle_info['brand']} {vehicle_info['model']}" if vehicle_info else "Vehicle"
 
-        fire_notif(user_id=customer_id, title="Sale Created", message=f"Your sale #{sale_id} for {vehicle_name} has been created.", channel="in_app", ref_type="sales", ref_id=sale_id)
-
+    
         try:
+            fire_notif(user_id=customer_id, title="Sale Created", message=f"Your sale #{sale_id} for {vehicle_name} has been created.", channel="in_app", ref_type="sales", ref_id=sale_id)
             send_sale_confirmation(customer_email, name, sale_id, vehicle_name, selling_price)
         except Exception:
             pass
