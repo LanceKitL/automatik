@@ -22,14 +22,15 @@ def send_email_verification(user_email, name, verify_url):
 
     mail.send(msg)
 
-def welcome_user(email, template):
+def welcome_user(email, template, username=None, temp_password=None, portal_url=None):
+    subject = "Your AutoMatik Account is Ready!" if username else "Email Verified Successfully!"
     msg = Message(
         sender=("AutoMatik", "AutoMatik@services.com"),
-        subject="Email Verified Successfully!",
+        subject=subject,
         recipients=[email]
     )
-    
-    msg.html = render_template(template, email=email)
+
+    msg.html = render_template(template, email=email, username=username, temp_password=temp_password, portal_url=portal_url)
     mail.send(msg)
 
 def inquiry_received(email):
@@ -39,6 +40,21 @@ def inquiry_received(email):
         subject="Hi there, we have received your Inquiry!",
         body="Thank you so much!",
         recipients=[email]
+    )
+    mail.send(msg)
+
+def inquiry_assigned(email, name, agent_name, inquiry_id):
+    """Notify the inquiry submitter that an agent has been assigned."""
+    msg = Message(
+        sender=("AutoMatik", "AutoMatik@services.com"),
+        subject="Your Inquiry Has Been Assigned to an Agent",
+        recipients=[email]
+    )
+    msg.html = render_template(
+        'email/inquiry_assigned.html',
+        name=name,
+        agent_name=agent_name,
+        inquiry_id=inquiry_id
     )
     mail.send(msg)
 

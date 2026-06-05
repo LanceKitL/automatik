@@ -435,7 +435,9 @@ def verifyEmail():
             """,
             (response["user_id"],))
     
-    welcome_user(user["email"], 'email/welcome.html')  
+    from utils.log import get_local_ip
+    portal_url = f"http://{get_local_ip()}:5173"
+    welcome_user(user["email"], 'email/welcome.html', portal_url=portal_url)  
     
     return render_template('email_verification_ok.html')
     

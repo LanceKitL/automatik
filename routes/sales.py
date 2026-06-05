@@ -1,3 +1,9 @@
+"""
+Sales, Loans, Payments, Insurance, Contracts & Amortization routes.
+
+Prefix-less blueprint; endpoints use /admin/sales/... and /sales/...
+"""
+
 from flask import Blueprint
 from validators.middleware import role_required, logged_in_required
 from controllers.salesController import (
@@ -15,142 +21,223 @@ from controllers.paymentsController import (
 
 sales_bp = Blueprint('sales', __name__)
 
-# Sales — Admin
+# ══════════════════════════════════════════════════════════════════════════
+# SALES
+# ══════════════════════════════════════════════════════════════════════════
+
+# ── Admin ────────────────────────────────────────────────────────────────
+
 @sales_bp.route("/admin/sales", methods=["GET"])
 @logged_in_required
 @role_required("admin")
-def index_sales(): return listSales()
+def index_sales():
+    """List all sales (with optional filters)."""
+    return listSales()
 
 @sales_bp.route("/admin/sales/<int:sale_id>", methods=["GET"])
 @logged_in_required
 @role_required("admin")
-def show_sale(sale_id): return getSale(sale_id)
+def show_sale(sale_id):
+    """Get full sale detail: loan, payments, insurance, contract."""
+    return getSale(sale_id)
 
 @sales_bp.route("/admin/sales", methods=["POST"])
 @logged_in_required
 @role_required("admin")
-def create_new_sale(): return createSale()
+def create_new_sale():
+    """Create a sale (cash or installment, optionally from an inquiry)."""
+    return createSale()
 
 @sales_bp.route("/admin/sales/<int:sale_id>/status", methods=["PUT"])
 @logged_in_required
 @role_required("admin")
-def update_status(sale_id): return updateSaleStatus(sale_id)
+def update_status(sale_id):
+    """Transition sale status (pending → completed / cancelled)."""
+    return updateSaleStatus(sale_id)
 
-# Sales — Customer
+# ── Customer ─────────────────────────────────────────────────────────────
+
 @sales_bp.route("/sales/my", methods=["GET"])
 @logged_in_required
-def my_sales(): return getMySales()
+def my_sales():
+    """List the current customer's own sales."""
+    return getMySales()
 
 @sales_bp.route("/sales/my/<int:sale_id>", methods=["GET"])
 @logged_in_required
-def my_sale(sale_id): return getMySale(sale_id)
+def my_sale(sale_id):
+    """Get a single sale for the current customer."""
+    return getMySale(sale_id)
 
-# Contracts
+# ══════════════════════════════════════════════════════════════════════════
+# CONTRACTS
+# ══════════════════════════════════════════════════════════════════════════
+
 @sales_bp.route("/admin/sales/<int:sale_id>/contract", methods=["GET"])
 @logged_in_required
 @role_required("admin", "agent")
-def show_contract(sale_id): return getSaleContract(sale_id)
+def show_contract(sale_id):
+    """Get the contract for a sale."""
+    return getSaleContract(sale_id)
 
 @sales_bp.route("/admin/sales/<int:sale_id>/contract", methods=["POST"])
 @logged_in_required
 @role_required("admin")
-def create_new_contract(sale_id): return createContract(sale_id)
+def create_new_contract(sale_id):
+    """Create a draft contract for a sale."""
+    return createContract(sale_id)
 
 @sales_bp.route("/admin/sales/<int:sale_id>/contract/sign", methods=["PUT"])
 @logged_in_required
 @role_required("admin")
-def sign_sale_contract(sale_id): return signContract(sale_id)
+def sign_sale_contract(sale_id):
+    """Sign (finalise) a sale contract."""
+    return signContract(sale_id)
 
-# Insurance
+# ══════════════════════════════════════════════════════════════════════════
+# INSURANCE
+# ══════════════════════════════════════════════════════════════════════════
+
 @sales_bp.route("/admin/insurance", methods=["GET"])
 @logged_in_required
 @role_required("admin")
-def index_insurance(): return listInsurance()
+def index_insurance():
+    """List all insurance records."""
+    return listInsurance()
 
 @sales_bp.route("/admin/sales/<int:sale_id>/insurance", methods=["POST"])
 @logged_in_required
 @role_required("admin")
-def create_insurance(sale_id): return addInsurance(sale_id)
+def create_insurance(sale_id):
+    """Add an insurance policy to a sale."""
+    return addInsurance(sale_id)
 
 @sales_bp.route("/admin/insurance/<int:insurance_id>", methods=["PUT"])
 @logged_in_required
 @role_required("admin")
-def update_insurance(insurance_id): return updateInsurance(insurance_id)
+def update_insurance(insurance_id):
+    """Update an insurance record (dates, status, provider)."""
+    return updateInsurance(insurance_id)
 
-# Loans — Admin
+# ══════════════════════════════════════════════════════════════════════════
+# LOANS
+# ══════════════════════════════════════════════════════════════════════════
+
+# ── Admin ────────────────────────────────────────────────────────────────
+
 @sales_bp.route("/admin/loans", methods=["GET"])
 @logged_in_required
 @role_required("admin")
-def index_loans(): return listLoans()
+def index_loans():
+    """List all loans (with optional status filter)."""
+    return listLoans()
 
 @sales_bp.route("/admin/loans/<int:loan_id>", methods=["GET"])
 @logged_in_required
 @role_required("admin")
-def show_loan(loan_id): return getLoan(loan_id)
+def show_loan(loan_id):
+    """Get a single loan with its amortisation schedule."""
+    return getLoan(loan_id)
 
 @sales_bp.route("/admin/sales/<int:sale_id>/loan", methods=["POST"])
 @logged_in_required
 @role_required("admin")
-def create_new_loan(sale_id): return createLoan(sale_id)
+def create_new_loan(sale_id):
+    """Create a loan for an existing installment sale."""
+    return createLoan(sale_id)
 
 @sales_bp.route("/admin/loans/<int:loan_id>", methods=["PUT"])
 @logged_in_required
 @role_required("admin")
-def update_loan(loan_id): return updateLoanStatus(loan_id)
+def update_loan(loan_id):
+    """Approve or reject a loan."""
+    return updateLoanStatus(loan_id)
 
 @sales_bp.route("/admin/loans/<int:loan_id>/schedule", methods=["GET"])
 @logged_in_required
 @role_required("admin")
-def show_loan_schedule(loan_id): return getLoanSchedule(loan_id)
+def show_loan_schedule(loan_id):
+    """Get the amortisation schedule for a loan."""
+    return getLoanSchedule(loan_id)
 
-# Loans — Customer
+# ── Customer ─────────────────────────────────────────────────────────────
+
 @sales_bp.route("/loans/my", methods=["GET"])
 @logged_in_required
-def my_loans(): return getMyLoans()
+def my_loans():
+    """List the current customer's own loans."""
+    return getMyLoans()
 
-# Amortization
+# ══════════════════════════════════════════════════════════════════════════
+# AMORTIZATION
+# ══════════════════════════════════════════════════════════════════════════
+
 @sales_bp.route("/admin/amortization/<int:schedule_id>/status", methods=["PUT"])
 @logged_in_required
 @role_required("admin")
-def update_amortization(schedule_id): return updateAmortizationStatus(schedule_id)
+def update_amortization(schedule_id):
+    """Manually mark an amortization entry as paid / overdue."""
+    return updateAmortizationStatus(schedule_id)
 
 @sales_bp.route("/admin/amortization/overdue", methods=["GET"])
 @logged_in_required
 @role_required("admin")
-def overdue_amortizations(): return getOverdueAmortizations()
+def overdue_amortizations():
+    """List all overdue amortization entries."""
+    return getOverdueAmortizations()
 
 @sales_bp.route("/admin/loans/<int:loan_id>/compute", methods=["POST"])
 @logged_in_required
 @role_required("admin")
-def recompute(loan_id): return recomputeAmortization(loan_id)
+def recompute(loan_id):
+    """Recompute and regenerate the amortisation schedule for a loan."""
+    return recomputeAmortization(loan_id)
 
-# Payments — Admin
+# ══════════════════════════════════════════════════════════════════════════
+# PAYMENTS
+# ══════════════════════════════════════════════════════════════════════════
+
+# ── Admin ────────────────────────────────────────────────────────────────
+
 @sales_bp.route("/admin/payments", methods=["GET"])
 @logged_in_required
 @role_required("admin")
-def index_payments(): return listPayments()
+def index_payments():
+    """List all payments (with optional date/method filters)."""
+    return listPayments()
 
 @sales_bp.route("/admin/payments/<int:payment_id>", methods=["GET"])
 @logged_in_required
 @role_required("admin")
-def show_payment(payment_id): return getPayment(payment_id)
+def show_payment(payment_id):
+    """Get a single payment record."""
+    return getPayment(payment_id)
 
 @sales_bp.route("/admin/sales/<int:sale_id>/payments", methods=["POST"])
 @logged_in_required
 @role_required("admin")
-def create_payment(sale_id): return recordPayment(sale_id)
+def create_payment(sale_id):
+    """Record a payment against a sale."""
+    return recordPayment(sale_id)
 
 @sales_bp.route("/admin/sales/<int:sale_id>/payments", methods=["GET"])
 @logged_in_required
 @role_required("admin")
-def sale_payments(sale_id): return getSalePayments(sale_id)
+def sale_payments(sale_id):
+    """Get all payments for a specific sale."""
+    return getSalePayments(sale_id)
 
 @sales_bp.route("/admin/payments/summary", methods=["GET"])
 @logged_in_required
 @role_required("admin")
-def payment_summary(): return getPaymentSummary()
+def payment_summary():
+    """Get aggregated payment summary stats."""
+    return getPaymentSummary()
 
-# Payments — Customer
+# ── Customer ─────────────────────────────────────────────────────────────
+
 @sales_bp.route("/payments/my", methods=["GET"])
 @logged_in_required
-def my_payments(): return getMyPayments()
+def my_payments():
+    """List the current customer's own payments."""
+    return getMyPayments()
