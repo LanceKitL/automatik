@@ -1,7 +1,7 @@
 from werkzeug.security import check_password_hash, generate_password_hash
-from utils.token_helper import EmailVerificationToken
+from utils.token_helper import EmailVerificationToken, PasswordResetToken
 from flask import session, jsonify, request, render_template, abort
-from services.mail_service import send_email_verification, welcome_user
+from services.mail_service import send_email_verification, welcome_user, send_password_reset, send_password_reset_confirmation
 from datetime import datetime, timezone
 from conn import run_query, get_db, Error
 from utils.log import audit_log, get_local_ip
@@ -435,7 +435,111 @@ def verifyEmail():
             """,
             (response["user_id"],))
     
-    welcome_user(user["email"], 'email/welcome.html')  
+    from utils.log import get_local_ip
+    portal_url = f"http://{get_local_ip()}:5173"
+    welcome_user(user["email"], 'email/welcome.html', portal_url=portal_url)  
     
     return render_template('email_verification_ok.html')
     
+
+def forgotPassword():
+    """
+    [PUBLIC]
+    Send a password reset link to the user's email.
+    Always returns the same message to prevent email enumeration.
+    Rate-limited by the token mechanism (3 active tokens max per user).
+    """
+    data = request.get_json(silent=True) or {}
+    email = data.get("email")
+
+    if not email:
+        return jsonify({"message": "Email is required."}), 400
+
+    user = run_query(
+        "SELECT user_id, email FROM users WHERE email = %s",
+        (email,),
+        fetch="one"
+    )
+
+    # Always return the same message regardless of whether the email exists
+    # to prevent user enumeration attacks.
+    if not user:
+        return jsonify({"message": "If that email exists, a reset link has been sent."}), 200
+
+    token = PasswordResetToken(user["user_id"])
+
+    if not token:
+        return jsonify({"message": "Token generation failed."}), 500
+
+    reset_url = f"http://{get_local_ip()}:5000/auth/reset-password?token_id={token['token_id']}&raw_token={token['raw_token']}"
+    send_password_reset(email, reset_url)
+
+    return jsonify({"message": "If that email exists, a reset link has been sent."}), 200
+
+
+def resetPassword():
+    """
+    [PUBLIC] (token-based)
+    Reset the user's password using a valid reset token.
+    Validates: token exists, not expired, not already used, hash matches.
+    Sends confirmation email on success.
+    """
+    data = request.get_json(silent=True) or {}
+    token_id = data.get("token_id")
+    raw_token = data.get("raw_token")
+    new_password = data.get("new_password")
+    confirm_password = data.get("confirm_password")
+
+    if not all([token_id, raw_token, new_password, confirm_password]):
+        return jsonify({"message": "token_id, raw_token, new_password, and confirm_password are required."}), 400
+
+    if new_password != confirm_password:
+        return jsonify({"message": "Passwords do not match."}), 400
+
+    response = run_query("""
+                         SELECT * FROM access_tokens
+                         WHERE token_id = %s
+                         AND token_type = 'password_reset'
+                         """,
+                         (token_id,),
+                         fetch="one")
+
+    if response is None:
+        return jsonify({"message": "Invalid or expired reset link."}), 404
+
+    now = datetime.now(timezone.utc)
+    expires_at = response["expires_at"]
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at < now:
+        return jsonify({"message": "Reset link has expired."}), 400
+
+    if response["used_at"] is not None:
+        return jsonify({"message": "Reset link has already been used."}), 400
+
+    if not raw_token:
+        return jsonify({"message": "Invalid token."}), 400
+
+    incoming_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    if incoming_hash != response["token_hash"]:
+        return jsonify({"message": "Invalid token."}), 403
+
+    hashed_password = generate_password_hash(new_password)
+
+    # Mark token as used to prevent replay attacks
+    run_query("UPDATE access_tokens SET used_at = %s WHERE token_id = %s",
+              (now, token_id))
+
+    # Update the user's password
+    run_query("UPDATE users SET hashed_password = %s WHERE user_id = %s",
+              (hashed_password, response["user_id"]))
+
+    # Send confirmation email
+    user = run_query("SELECT email FROM users WHERE user_id = %s",
+                     (response["user_id"],), fetch="one")
+
+    if user:
+        send_password_reset_confirmation(user["email"])
+
+    return jsonify({"message": "Password has been reset successfully."}), 200

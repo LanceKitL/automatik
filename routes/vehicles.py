@@ -1,3 +1,18 @@
+"""
+Vehicle routes — public browsing + admin CRUD for inventory + photos.
+
+Public:  GET  /vehicle/        — list all vehicles
+         GET  /vehicle/search  — filtered search
+         GET  /vehicle/<id>    — single vehicle detail
+Admin:   POST /vehicle/create  — add a vehicle
+         PUT  /vehicle/update/<id>
+         DELETE /vehicle/delete/<id>
+         POST /vehicle/add/photo
+         DELETE /vehicle/delete/photo/<photo_id>
+         PUT  /vehicle/update/status/<vehicle_id>
+         GET  /vehicle/low_stock
+"""
+
 from flask import Blueprint, request
 from validators.middleware import role_required, logged_in_required
 from controllers.vehicleController import (
@@ -15,14 +30,16 @@ from controllers.vehicleController import (
 
 vehicles_bp = Blueprint('vehicles', __name__)
 
-# can be accessed by everyone
-@vehicles_bp.route("/") # /vehicle
-def vehicles(): return getVehicles()
+# ── Public endpoints ─────────────────────────────────────────────────────
+
+@vehicles_bp.route("/")
+def vehicles():
+    """List all vehicles with their primary photo."""
+    return getVehicles()
 
 @vehicles_bp.route("/search")
 def search():
-    # filter by brand, model, fuel_type, status, price_min, price_max.
-    # join first the first photo of the vehicle, then filter by the query parameters.
+    """Search/filter vehicles by brand, model, fuel_type, status, price range."""
     params = {
         "brand": request.args.get("brand"),
         "model": request.args.get("model"),
@@ -33,44 +50,63 @@ def search():
     }
     return searchVehicle(params)
 
-@vehicles_bp.route("/<int:id>") # /vehicle/<id>
-def get_vehicles(id): return showVehicle(id)
+@vehicles_bp.route("/<int:id>")
+def get_vehicles(id):
+    """Get full details of a single vehicle (including photos)."""
+    return showVehicle(id)
 
-# admin only routes
-@vehicles_bp.route("/create", methods=["POST"]) 
+# ── Admin: Vehicle CRUD ──────────────────────────────────────────────────
+
+@vehicles_bp.route("/create", methods=["POST"])
 @logged_in_required
 @role_required("admin")
-def add_vehicle(): return createVehicle()
-    
-@vehicles_bp.route("/update/<int:id>", methods=["PUT"]) # update
+def add_vehicle():
+    """Add a new vehicle to the inventory."""
+    return createVehicle()
+
+@vehicles_bp.route("/update/<int:id>", methods=["PUT"])
 @logged_in_required
 @role_required("admin")
-def update_vehicle(id): return updateVehicleHandler(id)
+def update_vehicle(id):
+    """Update vehicle details."""
+    return updateVehicleHandler(id)
 
-@vehicles_bp.route("/delete/<int:id>", methods=["DELETE"]) # delete
+@vehicles_bp.route("/delete/<int:id>", methods=["DELETE"])
 @logged_in_required
 @role_required("admin")
-def delete_vehicle(id): return deleteVehicleHandler(id)
+def delete_vehicle(id):
+    """Delete (or deactivate) a vehicle."""
+    return deleteVehicleHandler(id)
 
-# for vehicle photos
+# ── Admin: Vehicle photos ────────────────────────────────────────────────
+
 @vehicles_bp.route("/add/photo", methods=["POST"])
 @logged_in_required
 @role_required("admin")
-def createPhoto(): return addPhoto()
+def createPhoto():
+    """Upload a photo for a vehicle."""
+    return addPhoto()
 
 @vehicles_bp.route("/delete/photo/<int:photo_id>", methods=["DELETE"])
 @logged_in_required
 @role_required("admin")
-def deletePhoto(photo_id): return removePhoto(photo_id)
+def deletePhoto(photo_id):
+    """Remove a photo from a vehicle."""
+    return removePhoto(photo_id)
+
+# ── Admin: Status & stock ────────────────────────────────────────────────
 
 @vehicles_bp.route("/update/status/<int:vehicle_id>", methods=["PUT"])
 @logged_in_required
 @role_required("admin")
-def changeStatus(vehicle_id):return updateStatus(vehicle_id)
+def changeStatus(vehicle_id):
+    """Manually update a vehicle's status (available/reserved/sold, etc.)."""
+    return updateStatus(vehicle_id)
 
 @vehicles_bp.route("/low_stock", methods=["GET"])
 @logged_in_required
 @role_required("admin")
 def get_stocks():
+    """List vehicles below a given stock threshold (?threshold=N)."""
     threshold = request.args.get("threshold")
     return indexLowStocks(threshold)

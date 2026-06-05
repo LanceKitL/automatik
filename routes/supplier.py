@@ -1,7 +1,19 @@
+"""
+Supplier routes — manage parts/service vendors.
+
+All endpoints require login; write operations require admin role.
+
+GET    /supplier/        — list all suppliers
+POST   /supplier/        — create a supplier (admin)
+GET    /supplier/<id>    — get one supplier
+PUT    /supplier/<id>    — update a supplier (admin)
+DELETE /supplier/<id>    — delete a supplier (admin)
+"""
+
 from flask import Blueprint, jsonify
 from validators.middleware import role_required, logged_in_required
 from conn import run_query
-from controllers.supplierController import(
+from controllers.supplierController import (
     createSupplier,
     updateSupplier,
     deleteSupplier,
@@ -9,38 +21,49 @@ from controllers.supplierController import(
 
 supplier_bp = Blueprint('suppliers', __name__)
 
-#List all suppliers
+# ── List ─────────────────────────────────────────────────────────────────
+
 @supplier_bp.route('/')
 @logged_in_required
-def suppliers ():
-    res = run_query("SELECT * FROM suppliers", fetch= "all")
-    return jsonify ({"data": res}), 200
+def suppliers():
+    """Return all suppliers."""
+    res = run_query("SELECT * FROM suppliers", fetch="all")
+    return jsonify({"data": res}), 200
 
-#Create Suppliers
-@supplier_bp.route('/', methods = ['POST'])
+# ── Create (admin) ───────────────────────────────────────────────────────
+
+@supplier_bp.route('/', methods=['POST'])
 @logged_in_required
 @role_required('admin')
-def add_suppliers(): return createSupplier()
+def add_suppliers():
+    """Add a new supplier."""
+    return createSupplier()
 
-#Get suppliers
+# ── Get single ───────────────────────────────────────────────────────────
+
 @supplier_bp.route('/<int:id>')
 @logged_in_required
 def get_suppliers(id):
-     res = run_query("SELECT * FROM suppliers WHERE supplier_id = %s", (id,),fetch="one")
+    """Get a single supplier by ID."""
+    res = run_query("SELECT * FROM suppliers WHERE supplier_id = %s", (id,), fetch="one")
+    if not res:
+        return jsonify({"message": "Supplier not found"}), 404
+    return jsonify({"data": res}), 200
 
-     if not res:
-          return jsonify ({"message": "Supplier not found"}), 404
-     
-     return jsonify ({"data": res}), 200
+# ── Update (admin) ───────────────────────────────────────────────────────
 
-#Update Suppliers
-@supplier_bp.route('/<int:id>', methods = ['PUT'])
+@supplier_bp.route('/<int:id>', methods=['PUT'])
 @logged_in_required
 @role_required('admin')
-def update_suppliers(id): return updateSupplier(id)
+def update_suppliers(id):
+    """Update a supplier's details."""
+    return updateSupplier(id)
 
-#Delete Suppliers
-@supplier_bp.route('/<int:id>', methods = ['DELETE'])
+# ── Delete (admin) ───────────────────────────────────────────────────────
+
+@supplier_bp.route('/<int:id>', methods=['DELETE'])
 @logged_in_required
 @role_required('admin')
-def delete_suppliers(id): return deleteSupplier(id)
+def delete_suppliers(id):
+    """Delete a supplier."""
+    return deleteSupplier(id)
