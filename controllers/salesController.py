@@ -49,11 +49,22 @@ def generate_amortization_schedule(cursor, loan_id, loan_amount, interest_rate, 
 
 
 def insert_agent_commission(cursor, sale_id, agent_id, selling_price):
-    agent = run_query("SELECT default_commission_rate FROM agent_details WHERE user_id = %s", (agent_id,), fetch="one")
-    rate = float(agent["default_commission_rate"]) if agent and agent["default_commission_rate"] else 3.0
-    amount = float(Decimal(str(selling_price)) * Decimal(str(rate)) / Decimal("100"))
-    cursor.execute("INSERT INTO agent_commissions (sale_id, agent_id, amount, commission_rate) VALUES (%s,%s,%s,%s)", (sale_id, agent_id, amount, rate))
-
+    cursor.execute("SELECT default_commission_rate FROM agent_details WHERE user_id = %s", (agent_id,))
+    agent = cursor.fetchone()
+    
+    if agent and agent.get("default_commission_rate"):
+        rate = Decimal(str(agent["default_commission_rate"]))
+    else:
+        rate = Decimal("3.0")
+        
+    selling_price_dec = Decimal(str(selling_price))
+    amount = (selling_price_dec * rate / Decimal("100")).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    
+    cursor.execute("""
+        INSERT INTO agent_commissions (sale_id, agent_id, amount, commission_rate) 
+        VALUES (%s, %s, %s, %s)
+    """, (sale_id, agent_id, float(amount), float(rate)))
+  
 
 # --- SALES ---
 
@@ -169,21 +180,22 @@ def createSale():
 
         if payment_type == "installment":
             down_payment = data.get("down_payment")
-            loan_amount = data.get("loan_amount")
             term_months = data.get("term_months")
             interest_rate = data.get("interest_rate")
             bank_name = data.get("bank_name")
-            if not all([loan_amount, term_months, interest_rate, bank_name, down_payment]):
-                return jsonify({"message": "loan_amount, term_months, interest_rate, bank_name, and down_payment are required for installment."}), 422
+            if down_payment is None or not all([ term_months, interest_rate, bank_name, down_payment]):
+                return jsonify({"message": " term_months, interest_rate, bank_name, and down_payment are required for installment."}), 422
             try:
-                loan_amount = float(loan_amount)
                 term_months = int(term_months)
                 interest_rate = float(interest_rate)
                 down_payment = float(down_payment)
             except (TypeError, ValueError):
-                return jsonify({"message": "loan_amount, term_months, interest_rate, and down_payment must be numbers."}), 422
+                return jsonify({"message": " term_months, interest_rate, and down_payment must be numbers."}), 422
+                  
+            loan_amount = selling_price - down_payment
+            
             if loan_amount <= 0 or loan_amount > selling_price:
-                return jsonify({"message": "loan_amount must be > 0 and <= selling_price."}), 422
+                return jsonify({"message": "Invalid down payment. The resulting loan amount must be > 0 and <= selling price.."}), 422
             if term_months < 6 or term_months > 60:
                 return jsonify({"message": "term_months must be between 6 and 60."}), 422
             if interest_rate < 0 or interest_rate > 30:
@@ -243,6 +255,7 @@ def createSale():
     finally:
         cursor.close()
         conn.close()
+    return jsonify({"message": "Sale created successfully.", "sale_id": sale_id}), 201
         
 
 
