@@ -71,6 +71,10 @@ def recordPayment(sale_id):
     amount_paid = data.get("amount_paid")
     payment_method = data.get("payment_method")
     schedule_id = data.get("schedule_id")
+<<<<<<< HEAD
+=======
+    reference = data.get("reference")
+>>>>>>> 7814b6bb5884f40f3aed5c4c24d32be40cc3482d
 
     if not all([amount_paid, payment_method]):
         return jsonify({"message": "amount_paid and payment_method are required."}), 400
@@ -83,7 +87,11 @@ def recordPayment(sale_id):
     if amount_paid <= 0:
         return jsonify({"message": "amount_paid must be greater than 0."}), 422
 
+<<<<<<< HEAD
     valid_methods = ("cash", "bank_transfer", "credit_card", "cheque")
+=======
+    valid_methods = ("cash", "bank_transfer", "check", "online")
+>>>>>>> 7814b6bb5884f40f3aed5c4c24d32be40cc3482d
     if payment_method not in valid_methods:
         return jsonify({"message": f"payment_method must be one of {valid_methods}."}), 422
 
@@ -105,9 +113,15 @@ def recordPayment(sale_id):
                 return jsonify({"message": "This schedule entry is already paid."}), 409
 
         payment_id = run_query("""
+<<<<<<< HEAD
             INSERT INTO payments (sale_id, schedule_id, amount_paid, payment_method, payment_date, recorded_by)
             VALUES (%s,%s,%s,%s,NOW(),%s)
         """, (sale_id, schedule_id, amount_paid, payment_method, session["user"]), conn=conn, cursor=cursor)
+=======
+            INSERT INTO payments (sale_id, schedule_id, amount_paid, payment_method, payment_date, recorded_by, reference)
+            VALUES (%s,%s,%s,%s,NOW(),%s,%s)
+        """, (sale_id, schedule_id, amount_paid, payment_method, session["user"], reference), conn=conn, cursor=cursor)
+>>>>>>> 7814b6bb5884f40f3aed5c4c24d32be40cc3482d
 
         if schedule_id:
             run_query("UPDATE amortization_schedule SET status = 'paid' WHERE schedule_id = %s", (schedule_id,), conn=conn, cursor=cursor)

@@ -156,147 +156,177 @@ def indexCustomerInquiries():
     return jsonify(formatted_data), 200        
 
 
-#agent
+#admin
 def assignInquiry(inquiry_id):
     """
-    SALES AGENT PORTAL
-    
-    This function helps agent to self-assign themselves to a specific tasks.
+    ADMIN PORTAL
+
+    Admin assigns an open inquiry to a specific agent.
+    Requires 'agent_id' in the request body.
+
+    Sends:
+        - In-app notification to the assigned agent
+        - Email notification to the guest/customer
     """
-    # inquiries returned to agent dashboard is only status = 'open'
-    # inquiry_id cannot be None
-    # inquiry_id cannot have an existing agent_id
-    current_agent_id = session["user"]
-    
     if inquiry_id is None:
-        return jsonify({
-            "message": "inquiry_id cannot be empty."
-        }), 400
-    
-    res = run_query("""
-                    SELECT * FROM inquiries 
-                    WHERE inquiry_id = %s
-                    """, 
-                    (inquiry_id,),
-                    fetch="one")
-    
-    if res.get("agent_id"):
-        return jsonify({
-            "message": "task already taken."
-        }),400
-        
-    old_value = res.get("status")
-    
+        return jsonify({"message": "inquiry_id is required."}), 400
+
+    data = request.get_json(silent=True) or {}
+    agent_id = data.get("agent_id")
+
+    if not agent_id:
+        return jsonify({"message": "agent_id is required in request body."}), 400
+
+    # Validate the inquiry
+    inquiry = run_query("SELECT * FROM inquiries WHERE inquiry_id = %s",
+                        (inquiry_id,), fetch="one")
+    if not inquiry:
+        return jsonify({"message": "Inquiry not found."}), 404
+
+    if inquiry["status"] != "open":
+        return jsonify({"message": f"Inquiry is already '{inquiry['status']}'. Only 'open' inquiries can be assigned."}), 400
+
+    if inquiry.get("agent_id"):
+        return jsonify({"message": "Inquiry already has an agent assigned."}), 409
+
+    # Validate the target agent
+    agent_user = run_query("SELECT * FROM users WHERE user_id = %s AND role = 'agent'",
+                           (agent_id,), fetch="one")
+    if not agent_user:
+        return jsonify({"message": "Agent not found."}), 404
+
+    agent_details = run_query("SELECT * FROM agent_details WHERE user_id = %s",
+                              (agent_id,), fetch="one")
+    agent_label = agent_details["employee_number"] if agent_details else f"Agent #{agent_id}"
+
+    old_value = inquiry["status"]
+
+    # Assign
     run_query("""
-              UPDATE inquiries SET agent_id = %s, status = %s
-              WHERE inquiry_id = %s 
-              """,
-              (current_agent_id,'assigned',inquiry_id))
-    
-    new_value = {
-        "agent_id": current_agent_id,
-        "status": "assigned"
-    }
-    
-    audit_log(
-        current_agent_id,
-        "PUT",
-        "inquiries",
-        res["inquiry_id"],
-        json.dumps(old_value, default=str),
-        json.dumps(new_value, default=str)
-    )    
+        UPDATE inquiries SET agent_id = %s, status = 'assigned'
+        WHERE inquiry_id = %s
+    """, (agent_id, inquiry_id))
 
-    # Fetch agent details for the notification message
-    agent = run_query("SELECT * FROM agent_details WHERE user_id = %s", (current_agent_id,), fetch="one")
-    # Use a fallback label if agent_details record is missing (guard against None crash)
-    agent_label = agent["employee_number"] if agent else f"Agent #{current_agent_id}"
-    # guest_name is NULL for logged-in users; fall back to user_id for the message
-    customer_label = res.get("guest_name") or str(res.get("user_id", "Unknown"))
-    brodcast_notif(
-        role="admin",
-        title="Inquiry Assigned",
-        message=f"{agent_label} took inquiry #{inquiry_id} for {customer_label}",
-        channel="in_app",
-        ref_type="inquiries",
-        ref_id=inquiry_id
-    )
-
-    return jsonify({
-        "message": "task assigned successfully!"
-    }), 200
-
-def resolveInquiry(inquiry_id):
-    """
-    SALES AGENT PORTAL
-    
-        Marks specific inquiry as 'resolved'.
-    """
-    # check if inquiry is empty
-    # SET status = 'resolved'
-    # resolved_at = datetime.now()
-    # only resolve at task if its assigned
-    
-    # first layer -> check if inquiry_id does not exists
-    if not inquiry_id:
-        return jsonify({
-            "message": "inquiry does not exists. failed to update."
-        }), 400
-    
-    # second layer -> check if inquiry_id exists in the database and if the task is assigned to the current agent.
-    res = run_query("""
-                    SELECT * FROM inquiries 
-                    WHERE inquiry_id = %s AND agent_id = %s
-                    """,
-                    (inquiry_id,session["user"]),
-                    fetch="one")
-
-    agent_assigned_inquiries = run_query("""
-                                         SELECT * FROM inquiries WHERE agent_id = %s AND status = 'assigned'
-                                         """,
-                                         (session["user"],),
-                                         fetch="all")
-    if not res:
-        return jsonify({
-            "message": "inquiry does not exists.",
-        }), 400
-
-    if res["status"] == "resolved":
-        return jsonify({
-            "message": "task already marked as resolved.",
-            "available_tasks": agent_assigned_inquiries
-        }), 400
-    # if it does exist, get the old value
-    old_value = res["status"]
-        
-    run_query("""
-              UPDATE inquiries SET status = %s, resolved_at = %s
-              WHERE inquiry_id = %s
-              """,
-              ('resolved',datetime.now(),inquiry_id))
+    new_value = {"agent_id": agent_id, "status": "assigned"}
 
     audit_log(
         session["user"],
         "PUT",
         "inquiries",
-        res["inquiry_id"],
+        inquiry_id,
         json.dumps(old_value, default=str),
-        json.dumps({"status": "resolved"}, default=str)
+        json.dumps(new_value, default=str)
     )
 
-    if res.get("user_id"):
+    # ── In-app notification to the assigned agent ──
+    fire_notif(
+        user_id=agent_id,
+        title="New Inquiry Assigned",
+        message=f"Inquiry #{inquiry_id} has been assigned to you. Please follow up with the customer.",
+        channel="in_app",
+        ref_type="inquiries",
+        ref_id=inquiry_id
+    )
+
+    # ── In-app + Email notification to the customer/guest ──
+    customer_name = inquiry.get("guest_name") or "Customer"
+    customer_email = inquiry.get("guest_email")
+
+    if inquiry.get("user_id"):
+        # Existing customer — in-app
         fire_notif(
-            user_id=res["user_id"],
-            title="Inquiry Resolved",
-            message="Your inquiry has been marked as resolved. Thank you!",
+            user_id=inquiry["user_id"],
+            title="Inquiry Assigned",
+            message=f"Your inquiry #{inquiry_id} has been assigned to {agent_user['username']}. They will contact you soon.",
             channel="in_app",
             ref_type="inquiries",
             ref_id=inquiry_id
         )
+        # Also fetch their email if not already available
+        if not customer_email:
+            user = run_query("SELECT email FROM users WHERE user_id = %s", (inquiry["user_id"],), fetch="one")
+            customer_email = user["email"] if user else None
 
-    return jsonify({
-        "message": "task marked as resolved."
-    })
+    if customer_email:
+        try:
+            from services.mail_service import inquiry_assigned
+            inquiry_assigned(customer_email, customer_name, agent_user["username"], inquiry_id)
+        except Exception:
+            pass
+
+    return jsonify({"message": "Inquiry assigned successfully!"}), 200
+
+def resolveInquiry(inquiry_id):
+    """
+    AGENT PORTAL
+
+    Marks an assigned inquiry as 'resolved'.
+    Notifies the customer/guest via in-app and email.
+    """
+    if not inquiry_id:
+        return jsonify({"message": "inquiry_id is required."}), 400
+
+    # Only the assigned agent can resolve
+    inquiry = run_query("""
+        SELECT * FROM inquiries
+        WHERE inquiry_id = %s AND agent_id = %s
+    """, (inquiry_id, session["user"]), fetch="one")
+
+    if not inquiry:
+        return jsonify({"message": "Inquiry not found or not assigned to you."}), 404
+
+    if inquiry["status"] == "resolved":
+        return jsonify({"message": "Inquiry is already resolved."}), 400
+
+    old_value = inquiry["status"]
+
+    run_query("""
+        UPDATE inquiries SET status = 'resolved', resolved_at = %s
+        WHERE inquiry_id = %s
+    """, (datetime.now(), inquiry_id))
+
+    audit_log(
+        session["user"],
+        "PUT",
+        "inquiries",
+        inquiry_id,
+        json.dumps(old_value, default=str),
+        json.dumps({"status": "resolved"}, default=str)
+    )
+
+    # ── Notify customer/guest ──
+    customer_name = inquiry.get("guest_name") or "Customer"
+    customer_email = inquiry.get("guest_email")
+    agent = run_query("SELECT username FROM users WHERE user_id = %s", (session["user"],), fetch="one")
+
+    if inquiry.get("user_id"):
+        fire_notif(
+            user_id=inquiry["user_id"],
+            title="Inquiry Resolved",
+            message=f"Your inquiry #{inquiry_id} has been resolved by {agent['username'] if agent else 'your agent'}. Thank you!",
+            channel="in_app",
+            ref_type="inquiries",
+            ref_id=inquiry_id
+        )
+        if not customer_email:
+            user = run_query("SELECT email FROM users WHERE user_id = %s", (inquiry["user_id"],), fetch="one")
+            customer_email = user["email"] if user else None
+
+    if customer_email:
+        try:
+            from services.mail_service import mail
+            from flask_mail import Message
+            msg = Message(
+                sender=("AutoMatik", "AutoMatik@services.com"),
+                subject="Your Inquiry Has Been Resolved",
+                recipients=[customer_email]
+            )
+            msg.body = f"Hi {customer_name},\n\nYour inquiry #{inquiry_id} has been marked as resolved by {agent['username'] if agent else 'your agent'}. If you have further questions, please submit a new inquiry.\n\nThank you for choosing AutoMatik!"
+            mail.send(msg)
+        except Exception:
+            pass
+
+    return jsonify({"message": "Inquiry resolved successfully."}), 200
 
 # admin
 def displayInquiries():
@@ -415,8 +445,9 @@ def displayInquiries():
             LEFT JOIN users u
                 ON i.user_id = u.user_id
 
-            WHERE i.status = 'open'
+            WHERE i.status = 'open' OR (i.agent_id = %s AND i.status = 'assigned')
         """
+        values.append(session["user"])
         
 
     res = run_query(query, tuple(values), fetch="all")

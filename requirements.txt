@@ -6,5 +6,5 @@ python-dotenv
 flask_mail
 flask-socketio
 langchain
-lanchain-core
+lanchain_core
 langchain-nvidia-ai-endpoints

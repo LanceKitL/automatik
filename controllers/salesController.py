@@ -153,6 +153,7 @@ def createSale():
         selling_price = float(selling_price)
     except (TypeError, ValueError):
         return jsonify({"message": "selling_price must be a number."}), 422
+<<<<<<< HEAD
 
     if selling_price <= 0:
         return jsonify({"message": "selling_price must be greater than 0."}), 422
@@ -197,11 +198,131 @@ def createSale():
             
             if loan_amount <= 0 or loan_amount > selling_price:
                 return jsonify({"message": "Invalid down payment. The resulting loan amount must be > 0 and <= selling price.."}), 422
+=======
+    if selling_price < 0:
+        return jsonify({"message": "selling_price cannot be negative."}), 400
+
+    # ── resolve customer (from id or auto-create from inquiry) ──
+    conn, cursor = get_db()
+    try:
+        # Lock vehicle row
+        vehicle = run_query("SELECT * FROM vehicles WHERE vehicle_id = %s FOR UPDATE",
+                            (vehicle_id,), fetch="one", conn=conn, cursor=cursor)
+        if not vehicle:
+            return jsonify({"message": "Vehicle not found."}), 404
+
+        if vehicle["status"] not in ("available", "reserved"):
+            return jsonify({
+                "message": f"Vehicle status is '{vehicle['status']}'; only 'available' or 'reserved' vehicles can be sold."
+            }), 409
+
+        agent = run_query("SELECT * FROM users WHERE user_id = %s AND role = 'agent'",
+                          (agent_id,), fetch="one", conn=conn, cursor=cursor)
+        if not agent:
+            return jsonify({"message": "Agent not found."}), 404
+
+        temp_password = None
+        _new_customer_ctx = None
+
+        if customer_id:
+            customer = run_query("SELECT * FROM users WHERE user_id = %s AND role = 'customer'",
+                                 (customer_id,), fetch="one", conn=conn, cursor=cursor)
+            if not customer:
+                return jsonify({"message": "Customer not found."}), 404
+        else:
+            # ── auto-create customer from inquiry ──
+            inquiry = run_query("""
+                SELECT * FROM inquiries WHERE inquiry_id = %s
+            """, (inquiry_id,), fetch="one", conn=conn, cursor=cursor)
+            if not inquiry:
+                return jsonify({"message": "Inquiry not found."}), 404
+            if not inquiry.get("guest_name") or not inquiry.get("guest_email"):
+                return jsonify({
+                    "message": "Inquiry has no guest data. Provide customer_id instead."
+                }), 400
+            if inquiry["status"] not in ("open", "assigned"):
+                return jsonify({"message": f"Inquiry status must be 'open' or 'assigned', got '{inquiry['status']}'."}), 400
+
+            # Check if inquiry already linked to a user
+            if inquiry.get("user_id"):
+                customer = run_query("SELECT * FROM users WHERE user_id = %s AND role = 'customer'",
+                                     (inquiry["user_id"],), fetch="one", conn=conn, cursor=cursor)
+                if not customer:
+                    return jsonify({"message": "Linked inquiry user is not a customer."}), 400
+                customer_id = customer["user_id"]
+            else:
+                # Create customer from guest info
+                new_user_id, temp_password, _new_customer_ctx = _create_customer_from_inquiry(inquiry, conn, cursor)
+                customer = run_query("SELECT * FROM users WHERE user_id = %s",
+                                     (new_user_id,), fetch="one", conn=conn, cursor=cursor)
+                customer_id = new_user_id
+
+        # ── create sale ──
+        cursor.execute("""
+            INSERT INTO sales (vehicle_id, customer_id, agent_id, selling_price, payment_type, status, inquiry_id)
+            VALUES (%s, %s, %s, %s, %s, 'pending', %s)
+        """, (vehicle_id, customer_id, agent_id, selling_price, payment_type, inquiry_id))
+        sale_id = cursor.lastrowid
+
+        # Mark inquiry as resolved (if coming from inquiry)
+        if inquiry_id:
+            cursor.execute("""
+                UPDATE inquiries SET status = 'resolved', resolved_at = NOW(), user_id = %s
+                WHERE inquiry_id = %s
+            """, (customer_id, inquiry_id))
+
+        # Agent commission
+        insert_agent_commission(cursor, sale_id, agent_id, selling_price)
+
+        # Mark vehicle as sold
+        cursor.execute("UPDATE vehicles SET status = 'delivered' WHERE vehicle_id = %s", (vehicle_id,))
+
+        # Audit log
+        audit_log(
+            session["user"],
+            "POST",
+            "sales",
+            sale_id, None, json.dumps({
+                "vehicle_id": vehicle_id,
+                "customer_id": customer_id,
+                "agent_id": agent_id,
+                "payment_type": payment_type,
+                "selling_price": selling_price,
+                "status": "pending",
+            }, default=str),
+            conn=conn, cursor=cursor
+        )
+
+        # Draft contract
+        cursor.execute("INSERT INTO sales_contracts (sale_id, status) VALUES (%s, 'draft')", (sale_id,))
+
+        # ── installment handling ──
+        if payment_type == "installment":
+            term_months = data.get("term_months")
+            interest_rate = data.get("interest_rate")
+            loan_amount = data.get("loan_amount")
+            down_payment = data.get("down_payment", 0)
+
+            if not all([term_months, interest_rate, loan_amount]):
+                return jsonify({"message": "term_months, interest_rate, and loan_amount are required for installment."}), 400
+
+            try:
+                term_months = int(term_months)
+                interest_rate = float(interest_rate)
+                loan_amount = float(loan_amount)
+                down_payment = float(down_payment)
+            except (TypeError, ValueError):
+                return jsonify({"message": "term_months, interest_rate, loan_amount must be numbers."}), 422
+
+            if loan_amount <= 0 or loan_amount > selling_price:
+                return jsonify({"message": "loan_amount must be > 0 and <= selling_price."}), 422
+>>>>>>> 7814b6bb5884f40f3aed5c4c24d32be40cc3482d
             if term_months < 6 or term_months > 60:
                 return jsonify({"message": "term_months must be between 6 and 60."}), 422
             if interest_rate < 0 or interest_rate > 30:
                 return jsonify({"message": "interest_rate must be between 0 and 30."}), 422
 
+<<<<<<< HEAD
         sale_id = run_query("""
             INSERT INTO sales (vehicle_id, customer_id, agent_id, payment_type, selling_price, status, sale_date)
             VALUES (%s,%s,%s,%s,%s,'pending',NOW())""",
@@ -249,6 +370,75 @@ def createSale():
             new_value=json.dumps({"sale_id": sale_id}, default=str),
         )
         return jsonify({"sale_id": sale_id}), 201
+=======
+            # Pre-compute monthly amortisation with PMT formula
+            monthly_amortization = float(
+                Decimal(str(loan_amount))
+                * (Decimal(str(interest_rate)) / Decimal("100") / Decimal("12"))
+                / (1 - (1 + Decimal(str(interest_rate)) / Decimal("100") / Decimal("12")) ** -term_months)
+            ).__round__(2)
+
+            cursor.execute("""
+                INSERT INTO loan_details
+                    (sale_id, down_payment, loan_amount, interest_rate, term_months,
+                     monthly_amortization, bank_name, bank_approval_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending')
+            """, (sale_id, down_payment, loan_amount, interest_rate, term_months,
+                  monthly_amortization, 'automatik_financing'))
+
+            loan_id = cursor.lastrowid
+            sale_date = datetime.now()
+            generate_amortization_schedule(cursor, loan_id, loan_amount, interest_rate, term_months, sale_date)
+
+        conn.commit()
+
+        # ── post-commit notifications ──
+
+        # Welcome email + in-app notification for newly auto-created customers
+        if _new_customer_ctx:
+            try:
+                from services.mail_service import welcome_user
+                portal_url = f"http://{get_local_ip()}:5173"
+                welcome_user(_new_customer_ctx["guest_email"], "email/welcome.html",
+                             username=_new_customer_ctx["username"],
+                             temp_password=_new_customer_ctx["temp_password"],
+                             portal_url=portal_url)
+            except Exception:
+                pass
+            try:
+                fire_notif(user_id=_new_customer_ctx["user_id"], title="Account Created",
+                           message=f"Your AutoMatik account ({_new_customer_ctx['username']}) has been created. Welcome!",
+                           channel="in_app", ref_type="users", ref_id=_new_customer_ctx["user_id"])
+            except Exception:
+                pass
+
+        # Sale confirmation email
+        try:
+            vehicle_name = f"{vehicle['brand']} {vehicle['model']}"
+            send_sale_confirmation(customer["email"], customer["username"], sale_id, vehicle_name, selling_price)
+        except Exception:
+            pass
+
+        # Sale created in-app notification
+        fire_notif(
+            user_id=customer_id,
+            title="Sale Created",
+            message=f"Sale #{sale_id} has been created for {vehicle['brand']} {vehicle['model']}.",
+            channel="in_app",
+            ref_type="sales",
+            ref_id=sale_id
+        )
+
+        response = {
+            "message": "Sale created successfully.",
+            "sale_id": sale_id,
+            "customer_id": customer_id,
+        }
+        if temp_password:
+            response["temp_password"] = temp_password
+
+        return jsonify(response), 201
+>>>>>>> 7814b6bb5884f40f3aed5c4c24d32be40cc3482d
 
     except Error as e:
         conn.rollback()
@@ -256,9 +446,12 @@ def createSale():
     finally:
         cursor.close()
         conn.close()
+<<<<<<< HEAD
     return jsonify({"message": "Sale created successfully.", "sale_id": sale_id}), 201
         
 
+=======
+>>>>>>> 7814b6bb5884f40f3aed5c4c24d32be40cc3482d
 
 def updateSaleStatus(sale_id):
     data = request.get_json(silent=True) or {}
@@ -267,7 +460,11 @@ def updateSaleStatus(sale_id):
     if not new_status:
         return jsonify({"message": "status is required."}), 400
 
+<<<<<<< HEAD
     valid_transitions = {"pending": ["completed", "cancelled", "active"], "completed": [], "cancelled": [], "active": ["completed", "cancelled"]}
+=======
+    valid_transitions = {"pending": ["completed", "cancelled"], "completed": [], "cancelled": []}
+>>>>>>> 7814b6bb5884f40f3aed5c4c24d32be40cc3482d
     sale = run_query("SELECT * FROM sales WHERE sale_id = %s", (sale_id,), fetch="one")
 
     if not sale:
@@ -287,6 +484,17 @@ def updateSaleStatus(sale_id):
 
     audit_log(session["user"], "PUT", "sales", sale_id, json.dumps(old_value, default=str), json.dumps({"status": new_status}, default=str))
 
+<<<<<<< HEAD
+=======
+    # Notify customer of sale status change
+    try:
+        fire_notif(user_id=sale["customer_id"], title="Sale Status Updated",
+                   message=f"Sale #{sale_id} status changed to '{new_status}'.",
+                   channel="in_app", ref_type="sales", ref_id=sale_id)
+    except Exception:
+        pass
+
+>>>>>>> 7814b6bb5884f40f3aed5c4c24d32be40cc3482d
     return jsonify({"message": f"Sale status updated to '{new_status}'."}), 200
 
 
@@ -340,6 +548,7 @@ def getSaleContract(sale_id):
     return jsonify({"data": contract}), 200
 
 
+<<<<<<< HEAD
 def createSalesContracts():
     
  data = request.get_json(silent=True) or {}
@@ -387,6 +596,23 @@ def createSalesContracts():
         )
     
  return jsonify({"message": "Creation Complete"})
+=======
+def createContract(sale_id):
+    sale = run_query("SELECT * FROM sales WHERE sale_id = %s", (sale_id,), fetch="one")
+    if not sale:
+        return jsonify({"message": "Sale not found."}), 404
+
+    existing = run_query("SELECT contract_id FROM sales_contracts WHERE sale_id = %s", (sale_id,), fetch="one")
+    if existing:
+        return jsonify({"message": "Contract already exists for this sale."}), 409
+
+    contract_id = run_query("INSERT INTO sales_contracts (sale_id, status) VALUES (%s,'draft')", (sale_id,))
+
+    audit_log(session["user"], "POST", "sales_contracts", contract_id, None, json.dumps({"sale_id": sale_id, "status": "draft"}, default=str))
+
+    return jsonify({"contract_id": contract_id}), 201
+
+>>>>>>> 7814b6bb5884f40f3aed5c4c24d32be40cc3482d
 
 def signContract(sale_id):
     sale = run_query("SELECT sale_id, status FROM sales WHERE sale_id = %s", (sale_id,), fetch="one")
@@ -424,6 +650,7 @@ def listInsurance():
     return jsonify({"data": result}), 200
 
 
+<<<<<<< HEAD
 def createInsuranceRecord():
     data = request.get_json(silent=True) or {}
     
@@ -547,6 +774,95 @@ def updateInsuranceRecord(insurance_id):
     )
 
     return jsonify({"message": "Insurance record updated successfully!"}), 200
+=======
+def addInsurance(sale_id):
+    sale = run_query("SELECT sale_id, vehicle_id, customer_id FROM sales WHERE sale_id = %s", (sale_id,), fetch="one")
+    if not sale:
+        return jsonify({"message": "Sale not found."}), 404
+
+    data = request.get_json(silent=True) or {}
+    provider_name = data.get("provider") or data.get("provider_name")
+    policy_number = data.get("policy_number")
+    start_date = data.get("coverage_start") or data.get("start_date")
+    end_date = data.get("coverage_end") or data.get("end_date")
+    coverage_type = data.get("coverage_type")
+
+    if not all([provider_name, policy_number, start_date, end_date]):
+        return jsonify({"message": "provider (or provider_name), policy_number, coverage_start (or start_date), and coverage_end (or end_date) are required."}), 400
+
+    insurance_id = run_query("""
+        INSERT INTO insurance_records (sale_id, vehicle_id, customer_id, provider_name, policy_number, coverage_type, start_date, end_date)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+    """, (sale_id, sale["vehicle_id"], sale["customer_id"], provider_name, policy_number, coverage_type, start_date, end_date))
+
+    audit_log(session["user"], "POST", "insurance_records", insurance_id, None, json.dumps(data, default=str))
+
+    # Notify customer
+    try:
+        fire_notif(user_id=sale["customer_id"], title="Insurance Added",
+                   message=f"Insurance policy {policy_number} added to sale #{sale_id}.",
+                   channel="in_app", ref_type="insurance_records", ref_id=insurance_id)
+    except Exception:
+        pass
+
+    return jsonify({"insurance_id": insurance_id}), 201
+
+
+def updateInsurance(insurance_id):
+    data = request.get_json(silent=True) or {}
+    existing = run_query("SELECT * FROM insurance_records WHERE insurance_id = %s", (insurance_id,), fetch="one")
+
+    if not existing:
+        return jsonify({"message": "Insurance record not found."}), 404
+
+    provider_name = data.get("provider") or data.get("provider_name")
+    start_date = data.get("coverage_start") or data.get("start_date")
+    end_date = data.get("coverage_end") or data.get("end_date")
+    status = data.get("status")
+    coverage_type = data.get("coverage_type")
+
+    updates = []
+    params = []
+
+    if provider_name is not None:
+        updates.append("provider_name = %s")
+        params.append(provider_name)
+    if start_date is not None:
+        updates.append("start_date = %s")
+        params.append(start_date)
+    if end_date is not None:
+        updates.append("end_date = %s")
+        params.append(end_date)
+    if coverage_type is not None:
+        updates.append("coverage_type = %s")
+        params.append(coverage_type)
+    if status is not None:
+        if status not in ("active", "expired", "cancelled"):
+            return jsonify({"message": "status must be 'active', 'expired', or 'cancelled'."}), 422
+        updates.append("status = %s")
+        params.append(status)
+
+    if not updates:
+        return jsonify({"message": "No fields to update."}), 400
+
+    params.append(insurance_id)
+    run_query(f"UPDATE insurance_records SET {', '.join(updates)} WHERE insurance_id = %s", tuple(params))
+
+    audit_log(session["user"], "PUT", "insurance_records", insurance_id, json.dumps(existing, default=str), json.dumps(data, default=str))
+
+    # Notify customer
+    try:
+        sale = run_query("SELECT customer_id FROM sales WHERE sale_id = %s", (existing["sale_id"],), fetch="one")
+        if sale:
+            fire_notif(user_id=sale["customer_id"], title="Insurance Updated",
+                       message=f"Insurance policy {existing['policy_number']} updated.",
+                       channel="in_app", ref_type="insurance_records", ref_id=insurance_id)
+    except Exception:
+        pass
+
+    return jsonify({"message": "Insurance record updated."}), 200
+
+>>>>>>> 7814b6bb5884f40f3aed5c4c24d32be40cc3482d
 
 # --- LOANS ---
 
