@@ -31,11 +31,7 @@ def fire_notif(user_id, title, message, channel, ref_type, ref_id):
 
     return True
 
-def brodcast_notif(role, title, message, channel, ref_type, ref_id):
-    """
-    Broadcast a notification to all users with a given role.
-    Inserts into notifications table for each user and emits via WebSocket.
-    """
+def broadcast_notif(role, title, message, channel, ref_type, ref_id):
     res = run_query("SELECT * FROM users WHERE role = %s",(role,), fetch="all")
     created_at = datetime.now()
     if not res:
