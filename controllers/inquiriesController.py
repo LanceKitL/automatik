@@ -2,7 +2,7 @@ from conn import run_query
 from flask import session, jsonify, request
 from datetime import datetime
 from utils.log import audit_log
-from utils.notification import fire_notif, brodcast_notif
+from utils.notification import fire_notif, broadcast_notif
 from services.mail_service import inquiry_received
 import json
 # inquiry_id

@@ -364,10 +364,11 @@ WARRANTY_TRANSITIONS = {
 def submitWarrantyClaimHandler():
     """
     Submit a new warranty claim. Verifies sale belongs to current user.
+    Prevents duplicate active claims on the same (sale_id, vehicle_id).
     Body:       vehicle_id (required), sale_id (required), claim_type (required, enum),
                 description (required, max 1000 chars)
     Returns:    JSON { message, claim_id }
-    Status:     201, 400, 403 (sale not owned), 422
+    Status:     201, 400, 403 (sale not owned), 409 (duplicate), 422
     """
     data = request.get_json()
     user_id = session["user"]
@@ -392,6 +393,17 @@ def submitWarrantyClaimHandler():
 
     if not sale:
         return jsonify({"message": "Sale not found or does not belong to you."}), 403
+
+    existing = run_query("""
+        SELECT claim_id FROM warranty_claims
+        WHERE sale_id = %s AND vehicle_id = %s AND status IN ('submitted', 'under_review')
+        LIMIT 1
+    """, (sale_id, vehicle_id), fetch="one")
+
+    if existing:
+        return jsonify({
+            "message": "An active claim already exists for this vehicle on this sale."
+        }), 409
 
     claim_id = run_query("""
         INSERT INTO warranty_claims

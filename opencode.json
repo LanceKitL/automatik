@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "automatik-dev",
+  "agent": {
+    "automatik-dev": {
+      "description": "Primary agent for the Automatik Flask + mysql-connector-python project",
+      "mode": "primary",
+      "model": "anthropic/claude-sonnet-4-6",
+      "permission": {
+        "edit": "allow",
+        "bash": { "git *": "allow", "*": "ask" }
+      }
+    }
+  },
+  "skills": {
+    "paths": [".opencode/skills"]
+  }
+}
