@@ -2,7 +2,7 @@ from conn import run_query
 from flask import session, jsonify, request
 from datetime import datetime
 from utils.log import audit_log
-from utils.notification import fire_notif, brodcast_notif
+from utils.notification import fire_notif, broadcast_notif
 from services.mail_service import send_new_inquiry_notification, send_warranty_claim_notification
 import json
 
@@ -743,7 +743,7 @@ def create_customer_warranty_claim():
         f"{sale['brand']} {sale['model']}."
     )
 
-    brodcast_notif(
+    broadcast_notif(
         role="admin",
         title="New Warranty Claim",
         message=broadcast_message,
@@ -752,7 +752,7 @@ def create_customer_warranty_claim():
         ref_id=claim_id,
     )
 
-    brodcast_notif(
+    broadcast_notif(
         role="agent",
         title="New Warranty Claim",
         message=broadcast_message,
