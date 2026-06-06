@@ -2,6 +2,39 @@ from datetime import datetime
 from flask import request, jsonify
 from conn import run_query
 
+def getSupplier(is_active):
+  
+    if is_active is None:
+        suppliers = run_query("SELECT * FROM suppliers", fetch="all")
+    else:
+        suppliers = run_query("SELECT * FROM suppliers WHERE is_active = %s", (is_active,), fetch="all")
+
+    if not suppliers:
+        return jsonify({"message": "No suppliers found."}), 404
+    
+    return jsonify({"data": suppliers})
+
+def getDetailsSupplier(supplier_id):
+    suppliers = run_query(
+                """ 
+                    SELECT spl.*, COUNT(v.vehicle_id) AS total_vehicles, sp.part_name
+                    FROM suppliers spl
+                    JOIN vehicles v
+                        ON spl.supplier_id = v.supplier_id
+                    JOIN supplies sp
+                        ON spl.supplier_id = sp.supplier_id
+                    WHERE spl.supplier_id = %s
+                    GROUP BY
+                        spl.supplier_id,
+                        spl.company_name;
+                 """, (supplier_id,), fetch="all")
+
+    if not suppliers:
+        return jsonify({"message": "No suppliers found."}), 404
+    
+    return jsonify({"data": suppliers})
+    
+
 def searchSupplier (params):
     if not params:
         return jsonify({"message": "search parameter is required."}), 400
@@ -21,7 +54,7 @@ def searchSupplier (params):
     if not res:
         return jsonify ({"message": "Supplier not found"}), 404
     
-    return jsonify ({"message": res})
+    return jsonify ({"data": res})
 
 def createSupplier ():
     data = request.get_json(silent=True) or {}
