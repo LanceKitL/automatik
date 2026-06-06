@@ -5,8 +5,11 @@ This script connects directly to the MySQL database (same config as
 conn.py), exercises the complete cash payment pipeline, and cleans up
 test data afterwards.
 
-Run:
+Run directly:
     python tests/test_payment_flow.py
+
+When run via pytest, this test is skipped unless a live DB with seed data is
+available.
 
 Requires:
     - MySQL running on localhost:3306
@@ -22,6 +25,8 @@ from datetime import datetime
 
 import mysql.connector
 from mysql.connector import Error as DBError
+
+import pytest
 
 # Allow running from project root
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -169,7 +174,47 @@ def pick_customer(conn, cursor):
 # ── Main test flow ───────────────────────────────────────────
 
 
+def _db_has_seed_data(conn, cursor):
+    """Quick check if the DB has the minimum seed data for the payment flow test."""
+    try:
+        v = run_query(
+            "SELECT COUNT(*) AS cnt FROM vehicles WHERE status = 'available'",
+            fetch="one", conn=conn, cursor=cursor,
+        )
+        a = run_query(
+            "SELECT COUNT(*) AS cnt FROM users WHERE role = 'agent'",
+            fetch="one", conn=conn, cursor=cursor,
+        )
+        c = run_query(
+            "SELECT COUNT(*) AS cnt FROM users WHERE role = 'customer'",
+            fetch="one", conn=conn, cursor=cursor,
+        )
+        return v and v["cnt"] > 0 and a and a["cnt"] > 0 and c and c["cnt"] > 0
+    except Exception:
+        return False
+
+
 def test_cash_sale_payment_or_flow():
+    """
+    pytest entry point.  Skips if no live DB / seed data.
+    Delegates to the full flow function for the actual work.
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        if not _db_has_seed_data(conn, cursor):
+            pytest.skip("No available vehicle, agent, or customer found in DB. Seed data first.")
+        cursor.close()
+        conn.close()
+    except Exception:
+        pytest.skip("Cannot connect to MySQL database.")
+
+    ids = _run_cash_sale_payment_flow()
+    if ids:
+        cleanup(ids)
+
+
+def _run_cash_sale_payment_flow():
     """
     Full cash-payment flow: create a cash sale → record a payment
     → generate an Official Receipt document.
@@ -445,7 +490,7 @@ if __name__ == "__main__":
     print("=" * 60)
     ids = None
     try:
-        ids = test_cash_sale_payment_or_flow()
+        ids = _run_cash_sale_payment_flow()
     except Exception as e:
         print(f"\nTest FAILED: {e}")
         sys.exit(1)
