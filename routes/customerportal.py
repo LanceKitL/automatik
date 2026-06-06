@@ -13,9 +13,7 @@ from controllers.customerportalController import (
     get_profile,
     get_documents,
     get_document,
-    mark_notification_read,
     get_amortization_schedule,
-    get_notifications,
     get_insurance
 )
 from controllers.vehicleController import (
@@ -29,6 +27,11 @@ from controllers.inquiriesController import (
 
 from controllers.profileController import (
     update_profile,
+)
+
+from controllers.notificationController import (
+    getNotifications,
+    markAsRead
 )
 
 customerportal_bp = Blueprint("customerportal", __name__)
@@ -180,7 +183,7 @@ def notifications():
     Requires logged-in customer role.
     Delegates to customerportalController.get_notifications().
     """
-    return get_notifications()
+    return getNotifications()
 
 @customerportal_bp.route("/notifications/<int:notification_id>/read", methods=["PUT"])
 @logged_in_required
@@ -192,7 +195,7 @@ def read_notification(notification_id):
     Requires logged-in customer role.
     Delegates to customerportalController.mark_notification_read(notification_id).
     """
-    return mark_notification_read(notification_id)
+    return markAsRead(notification_id)
 
 # --------- USER PROFILE ------------
 @customerportal_bp.route("/profile", methods=["GET", "PUT"])

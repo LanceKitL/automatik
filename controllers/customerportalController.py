@@ -433,64 +433,6 @@ def get_customer_inquiry(inquiry_id):
         },
     }), 200
 
-# NOTIFICATIONS
-def get_notifications():
-    """Retrieve all notifications for the logged-in customer.
-
-    Queries:
-        - notifications table filtered by user_id, ordered by created_at DESC.
-
-    Returns:
-        tuple: (jsonify({"data": [...]}), 200).
-    """
-    customer_id = session["user"]
-
-    notifs = run_query("""
-                       SELECT * FROM notifications
-                       WHERE user_id = %s
-                       ORDER BY created_at DESC
-                       """,
-                       (customer_id,),
-                       fetch="all")
-    
-    return jsonify({"data": notifs})    
-
-def mark_notification_read(notification_id):
-    """Mark a single notification as read for the logged-in customer.
-
-    Queries:
-        - SELECT on notifications to verify ownership and current read state.
-        - UPDATE on notifications to set is_read = 1.
-
-    Args:
-        notification_id (int): The notification ID to mark as read.
-
-    Returns:
-        tuple: (jsonify({"message": "Notification marked as read."}), 200) on success,
-               (jsonify({"message": "Notification not found."}), 404) if not found,
-               (jsonify({"message": "notification marked as read already."}), 400) if already read.
-    """
-    customer_id = session["user"]
-
-    row = run_query(
-        "SELECT is_read, notification_id FROM notifications WHERE notification_id = %s AND user_id = %s",
-        (notification_id, customer_id),
-        fetch="one",
-    )
-
-    if not row:
-        return jsonify({"message": "Notification not found."}), 404
-
-    if row["is_read"] == 1:
-        return jsonify({"message": "notification marked as read already."}),400
-
-    run_query(
-        "UPDATE notifications SET is_read = 1 WHERE notification_id = %s",
-        (notification_id,),
-    )
-
-    return jsonify({"message": "Notification marked as read."}), 200
-
 # USER PROFILE
 def get_profile():
     """Retrieve the authenticated customer's full profile (account + profile + customer details).
@@ -600,9 +542,7 @@ def get_insurance():
 
     return jsonify({"data": insurance}), 200
     
-    
 # WARRANTY CLAIMS
-    
 def get_customer_warranty_claims():
     """Retrieve all warranty claims submitted by the logged-in customer.
 
