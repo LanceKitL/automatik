@@ -25,6 +25,7 @@ from routes.profile import profile_bp
 from routes.notification import notif_bp
 from routes.agent import agent_bp
 from routes.customerportal import customerportal_bp
+from routes.service import service_bp
 
 # ── Application modules ──────────────────────────────────────────────────
 from validators.middleware import role_required, logged_in_required
@@ -85,6 +86,7 @@ app.register_blueprint(notif_bp, url_prefix="/notification")
 app.register_blueprint(agent_bp)
 app.register_blueprint(sales_bp)           # no prefix — uses /admin/... and /sales/... internally
 app.register_blueprint(customerportal_bp, url_prefix="/portal")
+app.register_blueprint(service_bp, url_prefix="/service")
 
 # ── Error handlers ───────────────────────────────────────────────────────
 @app.errorhandler(404)
@@ -98,7 +100,6 @@ def forbidden(error):
 @app.errorhandler(500)
 def server_error(error):
     return render_template("error/500.html"), 500
-app.register_blueprint(service_bp, url_prefix="/api")
 
 # ── Health & utility endpoints ───────────────────────────────────────────
 @app.route("/health")
