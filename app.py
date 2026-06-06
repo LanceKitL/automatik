@@ -27,6 +27,7 @@ from routes.notification import notif_bp
 from routes.agent import agent_bp
 from routes.customerportal import customerportal_bp
 from routes.service import service_bp
+from routes.settings import settings_bp
 
 # ── Application modules ──────────────────────────────────────────────────
 from validators.middleware import role_required, logged_in_required
@@ -35,12 +36,18 @@ from services.mail_service import init_mail
 from config import MailConfig
 from utils.socket_handler import socketio
 
+# ── Caching ────────────────────────────────────────────────────────────────
+# Flask-Caching with SimpleCache (in-memory) by default.
+# Override via CACHE_TYPE env var (e.g. "RedisCache") and CACHE_REDIS_URL.
+from utils.cache import cache
+
 # ── Blueprints (route modules) ───────────────────────────────────────────
 from routes.admin import admin_bp         # Admin user/agent/customer mgmt
 from routes.auth import auth_bp           # Login, register, verify, forgot-pw
 from routes.vehicles import vehicles_bp   # Vehicle inventory CRUD + photos
 from routes.inquiries import inquiry_bp   # Customer inquiry lifecycle
 from routes.supplier import supplier_bp   # Supplier CRUD
+from routes.supplies import supplies_bp  # Supplies CRUD
 from routes.profile import profile_bp     # User profile (own)
 from routes.notification import notif_bp  # In-app notifications
 from routes.sales import sales_bp         # Sales, loans, payments, insurance
@@ -51,6 +58,14 @@ app = Flask(__name__)
 # ── CORS ─────────────────────────────────────────────────────────────────
 # Allow the Vite dev-server origin (localhost:5173) to make credentialed requests.
 CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
+
+# ── Cache configuration ──────────────────────────────────────────────────
+# Default: SimpleCache (in-memory).  For production, set CACHE_TYPE=RedisCache
+# and CACHE_REDIS_URL=redis://user:pass@host:6379/0.
+app.config["CACHE_TYPE"] = os.getenv("CACHE_TYPE", "SimpleCache")
+app.config["CACHE_DEFAULT_TIMEOUT"] = int(os.getenv("CACHE_DEFAULT_TIMEOUT", "300"))
+app.config["CACHE_REDIS_URL"] = os.getenv("CACHE_REDIS_URL", "")
+cache.init_app(app)
 
 # ── Session configuration ────────────────────────────────────────────────
 app.config["SESSION_COOKIE_HTTPONLY"] = True          # Not accessible via JS
@@ -89,6 +104,7 @@ app.register_blueprint(agent_bp)
 app.register_blueprint(sales_bp)           # no prefix — uses /admin/... and /sales/... internally
 app.register_blueprint(customerportal_bp, url_prefix="/portal")
 app.register_blueprint(service_bp, url_prefix="/service")
+app.register_blueprint(settings_bp, url_prefix="/admin")  # /admin/settings, /admin/settings/<key>
 
 # ── Error handlers ───────────────────────────────────────────────────────
 @app.errorhandler(404)

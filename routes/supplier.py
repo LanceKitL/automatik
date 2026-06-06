@@ -17,6 +17,7 @@ from controllers.supplierController import (
     getSupplier,
     getDetailsSupplier,
     createSupplier,
+    get_supplier_detail,
     updateSupplier,
     deleteSupplier,
 )
@@ -51,10 +52,9 @@ def add_supplier():
 
 @supplier_bp.route("/<int:supplier_id>", methods=["PUT"])
 @logged_in_required
-@role_required("admin")
-def update_supplier(supplier_id):
-    """Update a supplier's contact info or is_active status."""
-    return updateSupplier(supplier_id)
+def get_suppliers(id):
+    """Get a single supplier by ID, including supplies list."""
+    return get_supplier_detail(id)
 
 
 @supplier_bp.route("/<int:supplier_id>", methods=["DELETE"])

@@ -5,6 +5,7 @@ openai
 python-dotenv
 flask_mail
 flask-socketio
+flask-caching
 langchain
 lanchain_core
 langchain-nvidia-ai-endpoints

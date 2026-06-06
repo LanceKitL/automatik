@@ -8,7 +8,7 @@ def getVehicles():
         Retrieves all vehicles from the database, along with their associated photos and supplier information.
     """
     car = run_query(
-        """SELECT * FROM vehicles""",
+        """SELECT * FROM vehicles WHERE status = 'available'""",
         fetch="all"
     )
 

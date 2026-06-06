@@ -1,8 +1,33 @@
+"""
+Supplier controller — CRUD for the suppliers table.
+
+Each supplier can be linked to vehicles and supplies.
+All write operations check existence first, and delete
+guards against orphaned vehicle references.
+"""
+
 from datetime import datetime
 from flask import request, jsonify
 from conn import run_query
 import re
 
+
+# ── Validation helpers ────────────────────────────────────────────────────
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _is_valid_email(email):
+    """Return True if *email* looks like a rough valid email address."""
+    return bool(_EMAIL_RE.match(email)) if email else True
+
+
+# ── Public endpoints ───────────────────────────────────────────────────────
+
+def searchSupplier(params):
+    """Search suppliers by company_name, contact_name, email, or phone."""
+    if not params:
+        return jsonify({"message": "search parameter is required."}), 400
 
 def getSupplier(is_active):
     """
@@ -86,116 +111,107 @@ def createSupplier():
     contact_email = data.get("contact_email")
     contact_phone = data.get("contact_phone")
     address = data.get("address")
-    is_active = data.get("is_active", 1)
+    is_active = data.get("is_active", 1)  # default active
+    created_at = datetime.now()
 
-    if not company_name or not company_name.strip():
+    # ── Required field ────────────────────────────────────────────────
+    if not company_name:
         return jsonify({"message": "company_name is required."}), 400
 
-    if contact_email:
-        email_pattern = r"^[^@]+@[^@]+\.[^@]+$"
-        if not re.match(email_pattern, contact_email):
-            return jsonify({"message": "Invalid email format."}), 422
+    # ── Email validation ──────────────────────────────────────────────
+    if contact_email and not _is_valid_email(contact_email):
+        return jsonify({"message": "Invalid email format."}), 422
 
+    # ── Insert ────────────────────────────────────────────────────────
     supplier_id = run_query(
         """
-        INSERT INTO suppliers (company_name, contact_name, contact_email, contact_phone, address, is_active, created_at)
+        INSERT INTO suppliers
+            (company_name, contact_name, contact_email, contact_phone,
+             address, is_active, created_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         """,
-        (
-            company_name.strip(),
-            contact_name.strip() if contact_name else None,
-            contact_email.strip() if contact_email else None,
-            contact_phone.strip() if contact_phone else None,
-            address.strip() if address else None,
-            1 if is_active else 0,
-            datetime.now(),
-        ),
+        (company_name, contact_name, contact_email,
+         contact_phone, address, is_active, created_at),
     )
 
-    return jsonify({"message": "Supplier added successfully.", "supplier_id": supplier_id}), 201
+    return jsonify({
+        "message": "Supplier added successfully.",
+        "supplier_id": supplier_id,
+    }), 201
 
 
-def updateSupplier(supplier_id):
-    """
-    Update supplier contact info or is_active status.
-    Path param: supplier_id
-    Body:       company_name, contact_name, contact_email, contact_phone, address, is_active
-    Returns:    JSON { message }
-    Status:     200, 400, 404
-    """
+def updateSupplier(id):
+    """Update an existing supplier.  Returns 404 if not found."""
+    data = request.get_json(silent=True) or {}
+
+    # ── Existence check ───────────────────────────────────────────────
     existing = run_query(
-        "SELECT supplier_id FROM suppliers WHERE supplier_id = %s",
-        (supplier_id,),
+        "SELECT * FROM suppliers WHERE supplier_id = %s",
+        (id,),
         fetch="one",
     )
-
     if not existing:
         return jsonify({"message": "Supplier not found."}), 404
 
-    data = request.get_json(silent=True) or {}
+    # ── Email validation (if provided) ────────────────────────────────
+    contact_email = data.get("contact_email")
+    if contact_email is not None and not _is_valid_email(contact_email):
+        return jsonify({"message": "Invalid email format."}), 422
 
+    # ── Dynamic UPDATE ────────────────────────────────────────────────
     fields = {
         "company_name": data.get("company_name"),
         "contact_name": data.get("contact_name"),
-        "contact_email": data.get("contact_email"),
+        "contact_email": contact_email,
         "contact_phone": data.get("contact_phone"),
         "address": data.get("address"),
         "is_active": data.get("is_active"),
     }
 
-    update_fields = []
+    update_clauses = []
     params = []
+    for col, val in fields.items():
+        if val is not None:
+            update_clauses.append(f"{col} = %s")
+            params.append(val)
 
-    for field_name, value in fields.items():
-        if value is not None:
-            if field_name == "is_active":
-                value = 1 if value else 0
-            update_fields.append(f"{field_name} = %s")
-            params.append(value)
-
-    if not update_fields:
+    if not update_clauses:
         return jsonify({"message": "No fields to update."}), 400
 
-    if data.get("contact_email"):
-        email_pattern = r"^[^@]+@[^@]+\.[^@]+$"
-        if not re.match(email_pattern, data["contact_email"]):
-            return jsonify({"message": "Invalid email format."}), 422
-
-    params.append(supplier_id)
+    params.append(id)
     run_query(
-        f"UPDATE suppliers SET {', '.join(update_fields)} WHERE supplier_id = %s",
+        f"UPDATE suppliers SET {', '.join(update_clauses)} WHERE supplier_id = %s",
         params,
     )
 
     return jsonify({"message": "Supplier updated successfully."}), 200
 
 
-def deleteSupplier(supplier_id):
+def deleteSupplier(id):
     """
-    Delete a supplier (only if no vehicles reference it).
-    Path param: supplier_id
-    Returns:    JSON { message } (204 has no body)
-    Status:     204, 404, 409
+    Delete a supplier.  Guards against deleting a supplier that still has
+    vehicles referencing it (409).
     """
+    # ── Existence check ───────────────────────────────────────────────
     existing = run_query(
-        "SELECT supplier_id FROM suppliers WHERE supplier_id = %s",
-        (supplier_id,),
+        "SELECT * FROM suppliers WHERE supplier_id = %s",
+        (id,),
         fetch="one",
     )
-
     if not existing:
         return jsonify({"message": "Supplier not found."}), 404
 
-    vehicles = run_query(
+    # ── Check vehicle references ──────────────────────────────────────
+    refs = run_query(
         "SELECT COUNT(*) AS total FROM vehicles WHERE supplier_id = %s",
-        (supplier_id,),
+        (id,),
         fetch="one",
     )
+    if refs and refs["total"] > 0:
+        return jsonify({
+            "message": "Cannot delete supplier; it has vehicles assigned."
+        }), 409
 
-    if vehicles["total"] > 0:
-        return jsonify(
-            {"message": "Cannot delete supplier with linked vehicles."}
-        ), 409
-
-    run_query("DELETE FROM suppliers WHERE supplier_id = %s", (supplier_id,))
+    # ── Delete ────────────────────────────────────────────────────────
+    run_query("DELETE FROM suppliers WHERE supplier_id = %s", (id,))
     return jsonify({"message": "Supplier deleted successfully."}), 204

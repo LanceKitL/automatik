@@ -62,6 +62,7 @@ class TestSalesFlow(unittest.TestCase):
         # side_effect / return_value on self.mock_run affects every controller.
         import controllers.salesController
         import controllers.inquiriesController
+        import controllers.settingsController
         import utils.log as utils_log          # audit_log lives here
 
         self.mock_run = MagicMock(name="run_query_mock")
@@ -71,12 +72,15 @@ class TestSalesFlow(unittest.TestCase):
                                                 "run_query", self.mock_run)
         self._patcher_inq_run = patch.object(controllers.inquiriesController,
                                               "run_query", self.mock_run)
+        self._patcher_settings_run = patch.object(controllers.settingsController,
+                                                   "run_query", self.mock_run)
         self._patcher_utils_run = patch.object(utils_log, "run_query", self.mock_run)
         self._patcher_sales_getdb = patch.object(controllers.salesController,
                                                   "get_db", self.mock_getdb)
 
         self._patcher_sales_run.start()
         self._patcher_inq_run.start()
+        self._patcher_settings_run.start()
         self._patcher_utils_run.start()
         self._patcher_sales_getdb.start()
 
@@ -103,6 +107,7 @@ class TestSalesFlow(unittest.TestCase):
         self._patcher_sales_run.stop()
         self._patcher_sales_getdb.stop()
         self._patcher_inq_run.stop()
+        self._patcher_settings_run.stop()
         self._patcher_utils_run.stop()
 
     # ─── fakes ────────────────────────────────
@@ -211,7 +216,11 @@ class TestSalesFlow(unittest.TestCase):
                         f"No UPDATE inquiries found. Calls:\n{cur.execute.call_args_list}")
 
         self.assertIn("temp_password", body)
+<<<<<<< HEAD
         # fire_notif is called twice: Account Created + Sale Created
+=======
+        # Controller now fires two notifications: account created + sale created
+>>>>>>> module/system-settings
         self.assertEqual(mock_notif.call_count, 2)
         mock_welcome.assert_called_once()
 
@@ -263,8 +272,13 @@ class TestSalesFlow(unittest.TestCase):
             params = args[1]
             self.assertEqual(params[6], "automatik_financing")
 
+<<<<<<< HEAD
         # Schedule IS generated during createSale (controller generates it immediately)
         # So mock_gen_sched has been called once already
+=======
+        # Schedule IS generated immediately during createSale (no longer deferred)
+        # So mock_gen_sched WILL be called — we just assert loan approved later.
+>>>>>>> module/system-settings
 
         # ── Approve loan ──
         loan_data = self._fake_loan(loan_id=50, sale_id=sale_id,
@@ -275,7 +289,11 @@ class TestSalesFlow(unittest.TestCase):
             if "for update" in q:
                 return loan_data
             if "count(*)" in q:
+<<<<<<< HEAD
                 return {"cnt": 1}  # schedule already generated during createSale
+=======
+                return {"cnt": 1}  # schedule already exists — don't regenerate on approval
+>>>>>>> module/system-settings
             if "update loan_details" in q:
                 return None
             if "select email" in q:

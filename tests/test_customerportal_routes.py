@@ -56,8 +56,12 @@ class TestCustomerPortalRoutes(unittest.TestCase):
         import controllers.inquiriesController
         import controllers.profileController
         import controllers.notificationController
+<<<<<<< HEAD
         import utils.notification as utils_notif
+=======
+>>>>>>> module/system-settings
         import utils.log as utils_log
+        import utils.notification as utils_notif
 
         self.mock_run = MagicMock(name="run_query_mock")
         self.mock_getdb = MagicMock(name="get_db_mock")
@@ -191,7 +195,11 @@ class TestCustomerPortalRoutes(unittest.TestCase):
         d = dict(
             notification_id=1, user_id=1, title="Test",
             message="Test notification", channel="in_app",
+<<<<<<< HEAD
             ref_type="general", ref_id=1,
+=======
+            ref_type="inquiry", ref_id=1,
+>>>>>>> module/system-settings
             is_read=0, created_at=MOCK_NOW,
         )
         d.update(kw)
@@ -455,10 +463,17 @@ class TestCustomerPortalRoutes(unittest.TestCase):
         resp = self.app.get("/portal/notifications")
         self.assertEqual(resp.status_code, 200)
         body = resp.get_json()
+<<<<<<< HEAD
         # getNotifications returns a list, not a dict with "data"
         self.assertIsInstance(body, list)
         if body:
             self.assertIn("id", body[0])
+=======
+        # Controller returns a list of notifications directly, not {"data": [...]}
+        self.assertIsInstance(body, list)
+        self.assertGreater(len(body), 0)
+        self.assertIn("id", body[0])
+>>>>>>> module/system-settings
 
     def test_mark_notification_read_success(self):
         self.mock_run.side_effect = [
@@ -473,7 +488,11 @@ class TestCustomerPortalRoutes(unittest.TestCase):
     def test_mark_notification_read_already_read(self):
         self.mock_run.return_value = self._fake_notification(is_read=1)
         resp = self.app.put("/portal/notifications/1/read")
+<<<<<<< HEAD
         # Controller does not reject already-read notifications; returns 200.
+=======
+        # Controller does not reject already-read; it just marks again
+>>>>>>> module/system-settings
         self.assertEqual(resp.status_code, 200)
 
     def test_mark_notification_read_not_found(self):
