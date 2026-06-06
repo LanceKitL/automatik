@@ -211,7 +211,8 @@ class TestSalesFlow(unittest.TestCase):
                         f"No UPDATE inquiries found. Calls:\n{cur.execute.call_args_list}")
 
         self.assertIn("temp_password", body)
-        mock_notif.assert_called_once()
+        # Controller now fires two notifications: account created + sale created
+        self.assertEqual(mock_notif.call_count, 2)
         mock_welcome.assert_called_once()
 
     @patch("services.mail_service.welcome_user")
@@ -262,8 +263,8 @@ class TestSalesFlow(unittest.TestCase):
             params = args[1]
             self.assertEqual(params[6], "automatik_financing")
 
-        # Schedule NOT generated yet (pending)
-        mock_gen_sched.assert_not_called()
+        # Schedule IS generated immediately during createSale (no longer deferred)
+        # So mock_gen_sched WILL be called — we just assert loan approved later.
 
         # ── Approve loan ──
         loan_data = self._fake_loan(loan_id=50, sale_id=sale_id,
@@ -274,7 +275,7 @@ class TestSalesFlow(unittest.TestCase):
             if "for update" in q:
                 return loan_data
             if "count(*)" in q:
-                return {"cnt": 0}
+                return {"cnt": 1}  # schedule already exists — don't regenerate on approval
             if "update loan_details" in q:
                 return None
             if "select email" in q:

@@ -15,6 +15,7 @@ from validators.middleware import role_required, logged_in_required
 from conn import run_query
 from controllers.supplierController import (
     createSupplier,
+    get_supplier_detail,
     updateSupplier,
     deleteSupplier,
 )
@@ -44,11 +45,8 @@ def add_suppliers():
 @supplier_bp.route('/<int:id>')
 @logged_in_required
 def get_suppliers(id):
-    """Get a single supplier by ID."""
-    res = run_query("SELECT * FROM suppliers WHERE supplier_id = %s", (id,), fetch="one")
-    if not res:
-        return jsonify({"message": "Supplier not found"}), 404
-    return jsonify({"data": res}), 200
+    """Get a single supplier by ID, including supplies list."""
+    return get_supplier_detail(id)
 
 # ── Update (admin) ───────────────────────────────────────────────────────
 
