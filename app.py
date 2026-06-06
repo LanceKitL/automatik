@@ -15,20 +15,6 @@ from datetime import timedelta
 from flask_cors import CORS
 import os
 
-#routes
-from routes.admin import admin_bp
-from routes.auth import auth_bp
-from routes.vehicles import vehicles_bp
-from routes.inquiries import inquiry_bp
-from routes.supplier import supplier_bp
-from routes.supplies import supplies_bp
-from routes.profile import profile_bp
-from routes.notification import notif_bp
-from routes.agent import agent_bp
-from routes.customerportal import customerportal_bp
-from routes.service import service_bp
-from routes.settings import settings_bp
-
 # ── Application modules ──────────────────────────────────────────────────
 from validators.middleware import role_required, logged_in_required
 from conn import run_query
@@ -41,19 +27,37 @@ from utils.socket_handler import socketio
 # Override via CACHE_TYPE env var (e.g. "RedisCache") and CACHE_REDIS_URL.
 from utils.cache import cache
 
+# ── App initialisation ───────────────────────────────────────────────────
+app = Flask(__name__)
+
 # ── Blueprints (route modules) ───────────────────────────────────────────
 from routes.admin import admin_bp         # Admin user/agent/customer mgmt
 from routes.auth import auth_bp           # Login, register, verify, forgot-pw
 from routes.vehicles import vehicles_bp   # Vehicle inventory CRUD + photos
 from routes.inquiries import inquiry_bp   # Customer inquiry lifecycle
-from routes.supplier import supplier_bp   # Supplier CRUD
-from routes.supplies import supplies_bp  # Supplies CRUD
 from routes.profile import profile_bp     # User profile (own)
 from routes.notification import notif_bp  # In-app notifications
 from routes.sales import sales_bp         # Sales, loans, payments, insurance
+from routes.agent import agent_bp
+from routes.customerportal import customerportal_bp
+from routes.service import service_bp
+from routes.settings import settings_bp
+from routes.documents import documents_bp
 
-# ── App initialisation ───────────────────────────────────────────────────
-app = Flask(__name__)
+# ── Blueprint registration ───────────────────────────────────────────────
+app.register_blueprint(admin_bp, url_prefix="/admin")
+app.register_blueprint(auth_bp, url_prefix="/auth")
+app.register_blueprint(vehicles_bp, url_prefix="/vehicle")
+app.register_blueprint(inquiry_bp, url_prefix="/inquiry")
+app.register_blueprint(profile_bp, url_prefix="/profile")
+app.register_blueprint(notif_bp, url_prefix="/notification")
+app.register_blueprint(agent_bp)
+app.register_blueprint(sales_bp)           # no prefix — uses /admin/... and /sales/... internally
+app.register_blueprint(customerportal_bp, url_prefix="/portal")
+app.register_blueprint(service_bp, url_prefix="/service")
+app.register_blueprint(settings_bp, url_prefix="/admin")  # /admin/settings, /admin/settings/<key>
+app.register_blueprint(documents_bp)  # /admin/settings, /admin/settings/<key>
+
 
 # ── CORS ─────────────────────────────────────────────────────────────────
 # Allow the Vite dev-server origin (localhost:5173) to make credentialed requests.
@@ -90,21 +94,6 @@ init_mail(app)
 
 # ── SocketIO ─────────────────────────────────────────────────────────────
 socketio.init_app(app)
-
-# ── Blueprint registration ───────────────────────────────────────────────
-app.register_blueprint(admin_bp, url_prefix="/admin")
-app.register_blueprint(auth_bp, url_prefix="/auth")
-app.register_blueprint(vehicles_bp, url_prefix="/vehicle")
-app.register_blueprint(inquiry_bp, url_prefix="/inquiry")
-app.register_blueprint(supplier_bp, url_prefix="/admin/suppliers")
-app.register_blueprint(supplies_bp, url_prefix="/admin/supplies")
-app.register_blueprint(profile_bp, url_prefix="/profile")
-app.register_blueprint(notif_bp, url_prefix="/notification")
-app.register_blueprint(agent_bp)
-app.register_blueprint(sales_bp)           # no prefix — uses /admin/... and /sales/... internally
-app.register_blueprint(customerportal_bp, url_prefix="/portal")
-app.register_blueprint(service_bp, url_prefix="/service")
-app.register_blueprint(settings_bp, url_prefix="/admin")  # /admin/settings, /admin/settings/<key>
 
 # ── Error handlers ───────────────────────────────────────────────────────
 @app.errorhandler(404)
