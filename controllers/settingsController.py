@@ -266,3 +266,31 @@ def add_setting():
         "message": "Setting added successfully.",
         "setting_id": new_id,
     }), 201
+
+
+def get_setting_value(key, default=None):
+    """
+    Public read-only helper -- fetch a single setting value by key.
+
+    Can be imported and called from any controller during a request
+    (e.g. createSale).  Reads from the shared "settings:all" cache
+    when possible, falling back to a direct DB query.
+
+    Args:
+        key:     The setting_key to look up.
+        default: Value returned if the key does not exist.
+
+    Returns:
+        The setting_value string, or *default* if not found.
+    """
+    # 1. Try cache first
+    cached = cache.get(_SETTINGS_CACHE_KEY)
+    if cached is not None and key in cached:
+        return cached[key]["setting_value"]
+
+    # 2. Cache miss -- direct DB query
+    row = run_query(
+        "SELECT setting_value FROM system_settings WHERE setting_key = %s",
+        (key,), fetch="one",
+    )
+    return row.get("setting_value", default) if row else default

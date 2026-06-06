@@ -62,6 +62,7 @@ class TestSalesFlow(unittest.TestCase):
         # side_effect / return_value on self.mock_run affects every controller.
         import controllers.salesController
         import controllers.inquiriesController
+        import controllers.settingsController
         import utils.log as utils_log          # audit_log lives here
 
         self.mock_run = MagicMock(name="run_query_mock")
@@ -71,12 +72,15 @@ class TestSalesFlow(unittest.TestCase):
                                                 "run_query", self.mock_run)
         self._patcher_inq_run = patch.object(controllers.inquiriesController,
                                               "run_query", self.mock_run)
+        self._patcher_settings_run = patch.object(controllers.settingsController,
+                                                   "run_query", self.mock_run)
         self._patcher_utils_run = patch.object(utils_log, "run_query", self.mock_run)
         self._patcher_sales_getdb = patch.object(controllers.salesController,
                                                   "get_db", self.mock_getdb)
 
         self._patcher_sales_run.start()
         self._patcher_inq_run.start()
+        self._patcher_settings_run.start()
         self._patcher_utils_run.start()
         self._patcher_sales_getdb.start()
 
@@ -103,6 +107,7 @@ class TestSalesFlow(unittest.TestCase):
         self._patcher_sales_run.stop()
         self._patcher_sales_getdb.stop()
         self._patcher_inq_run.stop()
+        self._patcher_settings_run.stop()
         self._patcher_utils_run.stop()
 
     # ─── fakes ────────────────────────────────

@@ -60,8 +60,9 @@ def insert_agent_commission(cursor, sale_id, agent_id, selling_price):
 
     Commission is always based on the original selling price (not interest-inflated).
     """
+    from controllers.settingsController import get_setting_value
     agent = run_query("SELECT default_commission_rate FROM agent_details WHERE user_id = %s", (agent_id,), fetch="one", cursor=cursor)
-    rate = float(agent["default_commission_rate"]) if agent and agent["default_commission_rate"] else 3.5
+    rate = float(agent["default_commission_rate"]) if agent and agent["default_commission_rate"] else float(get_setting_value("default_commission_rate", default="3.5"))
     amount = float(Decimal(str(selling_price)) * (Decimal(str(rate)) / Decimal("100")))
     cursor.execute("INSERT INTO agent_commissions (sale_id, agent_id, commission_amount, rate_applied) VALUES (%s,%s,%s,%s)", (sale_id, agent_id, amount, rate))
 
