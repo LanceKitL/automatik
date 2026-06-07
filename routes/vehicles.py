@@ -4,10 +4,11 @@ Vehicle routes — public browsing + admin CRUD for inventory + photos.
 Public:  GET  /vehicle/        — list all vehicles
          GET  /vehicle/search  — filtered search
          GET  /vehicle/<id>    — single vehicle detail
-Admin:   POST /vehicle/create  — add a vehicle
+Admin:   POST /vehicle/create         — add a vehicle
          PUT  /vehicle/update/<id>
          DELETE /vehicle/delete/<id>
          POST /vehicle/add/photo
+         PUT  /vehicle/photo/<photo_id>  — update photo details
          DELETE /vehicle/delete/photo/<photo_id>
          PUT  /vehicle/update/status/<vehicle_id>
          GET  /vehicle/low_stock
@@ -23,6 +24,7 @@ from controllers.vehicleController import (
     getVehicles,
     showVehicle,
     addPhoto,
+    updateVehiclePhoto,
     removePhoto,
     updateStatus,
     indexLowStocks
@@ -86,6 +88,13 @@ def delete_vehicle(id):
 def createPhoto():
     """Upload a photo for a vehicle."""
     return addPhoto()
+
+@vehicles_bp.route("/photo/<int:photo_id>", methods=["PUT"])
+@logged_in_required
+@role_required("admin")
+def editVehiclePhoto(photo_id):
+    """Update a vehicle photo's URL, sort order, or upload time."""
+    return updateVehiclePhoto(photo_id)
 
 @vehicles_bp.route("/delete/photo/<int:photo_id>", methods=["DELETE"])
 @logged_in_required

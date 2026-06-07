@@ -150,52 +150,81 @@ def showVehicle(id):
     return jsonify({"data": car}), 200
 
 
-# admin only 
 def createVehicle():
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    TRANSMISSION_TYPES = ["manual","automatic"]
+    FUEL_TYPES = ["gasoline","diesel","electric","hybrid"]
 
-    allowed_fields = {
-        "supplier_id": data.get("supplier_id"),
-        "body_type": data.get("body_type"),
-        "brand": data.get("brand"),
-        "color": data.get("color"),
-        "fuel_type": data.get("fuel_type"),
-        "model": data.get("model"),
-        "price": data.get("price"),
-        "seating_capacity": data.get("seating_capacity"),
-        "specs_json": data.get("specs_json"),
-        "status": data.get("status"),
-        "transmission": data.get("transmission"),
-        "vin": data.get("vin"),
-        "year": data.get("year")
-    }
+    if not isinstance(data, dict):
+        return jsonify({
+            "error": "Request body must be a JSON object"
+        }), 400
 
-    INPUT_FIELDS = []
-    PLACEHOLDERS = []
-    INPUT_DATA = []
-
-    for field_name, value in allowed_fields.items():
-        if value is not None:
-            # append the ff input fields
-            INPUT_FIELDS.append(field_name)
-            PLACEHOLDERS.append("%s")
-            INPUT_DATA.append(value)
-
-    if not "supplier_id" in INPUT_FIELDS:
-        return jsonify({"message": "supplier_id is required."}), 400
+    # required fields
+    supplier_id = data.get("supplier_id")
+    vin = data.get("vin")
+    brand = data.get("brand")
+    model = data.get("model")
+    year = data.get("year")
+    price = data.get("price")
     
-    # add photos too, but only if the vehicle is successfully added first, so that we can get the vehicle_id to link the photos to.
-
-    query = f"""
-            INSERT INTO vehicles ({", ".join(INPUT_FIELDS)})
-            VALUES ({", ".join(PLACEHOLDERS)})
-            """
-    car = run_query(query, INPUT_DATA)
-
-    if not car: 
-        return jsonify({"message": "adding did not execute successfully."}), 400
+    # other fields
+    color = data.get("color")
+    body_type = data.get("body_type")
+    seating_capacity = data.get("seating_capacity")
+    transmission = data.get("transmission")
+    fuel_type = data.get("fuel_type")
+    specs_json = data.get("specs_json")
     
-    return jsonify({"message": "vehicle added successfully!"}), 200
+    if not all([supplier_id, vin, model, year, price, color, body_type, seating_capacity, transmission, fuel_type, specs_json]):
+        return jsonify({
+            "message": "supplier_id, vin, model, year, price, color, body_type, seating_capacity, transmission, fuel_type, specs_json are required."
+        }), 400
+        
+    if transmission not in TRANSMISSION_TYPES:
+        return jsonify({
+            "message": "invalid transmission type",
+            "fields": TRANSMISSION_TYPES
+        }), 400
+    
+    if fuel_type not in FUEL_TYPES:
+        return jsonify({
+            "message": "invalid fuel type",
+            "fields": FUEL_TYPES
+        }), 400
+    
+    # check if supplier exists
+    supplier = run_query("SELECT * FROM suppliers WHERE supplier_id =%s", (supplier_id,), fetch="one")
+    
+    # automatically get the supplier company (assuming that the company of the supplier = brand)
+    brand = supplier["company_name"].split(" ")[0] 
+    
+    # check if vin exists already
+    vehicle = run_query("SELECT * FROM vehicles WHERE vin =%s", (vin,), fetch="one")
+    
+    if vehicle:
+        return jsonify({
+            "message": f"vehicle {vin} already exists"
+        }), 400
+    
+    if not supplier:
+        return jsonify({
+            "message": "supplier not found."
+        }), 404
+        
+    res = run_query("""
+              INSERT INTO vehicles (supplier_id,vin,brand,model,year,price,color,body_type,seating_capacity,transmission,fuel_type,specs_json)
+              VALUE (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+              """,
+              (supplier_id,vin,brand,model,year,price,color,body_type,seating_capacity,transmission,fuel_type,specs_json))
+    
+    if not res:
+        return jsonify({
+            "message": "creation failed."
+        }), 500
+    
+    return jsonify({"message": f"vehicle #{res} created successfully!"}),200
+        
 
 def updateVehicleHandler(id): # updating vehicle
     data = request.get_json(silent=True) or {}
@@ -209,7 +238,6 @@ def updateVehicleHandler(id): # updating vehicle
     specs_json = data.get("specs_json")
     status = data.get("status")
     transmission = data.get("transmission")
-    vin = data.get("vin")
     year = data.get("year")
 
     allowed_fields = {
@@ -223,7 +251,6 @@ def updateVehicleHandler(id): # updating vehicle
         "specs_json": specs_json,
         "status": status,
         "transmission": transmission,
-        "vin": vin,
         "year": year
     }
 
@@ -245,23 +272,39 @@ def updateVehicleHandler(id): # updating vehicle
             WHERE vehicle_id = %s
             """
     
-    car = run_query(query, params)
+    # check if vehicle exists first
+    existing = run_query("""
+                        SELECT vehicle_id FROM vehicles
+                        WHERE vehicle_id = %s
+                        """,
+                        (id,),
+                        fetch="one")
 
-    if not car: 
-        return jsonify({"message": "update did not execute successfully."}), 400
-    
+    if not existing:
+        return jsonify({"message": "vehicle not found."}), 404
+
+    run_query(query, params)
+
     return jsonify({"message": f"vehicle {id} updated successfully!"}), 200
 
 def deleteVehicleHandler(id):
-    car = run_query("""
-                    DELETE FROM vehicles 
-                    WHERE vehicle_id = %s 
-                    """, 
-                    (id, ))
+    # check if vehicle exists first
+    existing = run_query("""
+                        SELECT vehicle_id FROM vehicles
+                        WHERE vehicle_id = %s
+                        """,
+                        (id,),
+                        fetch="one")
 
-    if not car: 
-        return jsonify({"message": "deletion did not execute successfully."}), 400
-    
+    if not existing:
+        return jsonify({"message": "vehicle not found."}), 404
+
+    run_query("""
+              DELETE FROM vehicles 
+              WHERE vehicle_id = %s 
+              """,
+              (id,))
+
     return jsonify({"message": f"vehicle {id} deleted successfully!"}), 200
 
 def updateStatus(vehicle_id):
@@ -295,7 +338,7 @@ def updateStatus(vehicle_id):
 
 
 # vehicle photos
-def updateVehiclePhoto(id):
+def updateVehiclePhoto(photo_id):
     data = request.get_json(silent=True) or {}
     photo_url = data.get("photo_url")
     sort_order = data.get("sort_order")
@@ -304,17 +347,24 @@ def updateVehiclePhoto(id):
     if not photo_url:
         return jsonify({"message": "photo_url is required."}), 400
     
-    res = run_query("""
-                    UPDATE vehicle_photos 
-                    SET photo_url = %s, sort_order = %s, uploaded_at = %s 
-                    WHERE vehicle_id = %s
-                    """,
-                    (photo_url,sort_order,uploaded_at, id))
-    
-    if not res: 
-        return jsonify({"message": f"updating vehicle {id} unsuccessful."}), 400
-    
-    return jsonify({"message": "vehicle updated successfully!"}), 200
+    existing = run_query("""
+                        SELECT photo_id FROM vehicle_photos
+                        WHERE photo_id = %s
+                        """,
+                        (photo_id,),
+                        fetch="one")
+
+    if not existing:
+        return jsonify({"message": "photo not found."}), 404
+
+    run_query("""
+              UPDATE vehicle_photos 
+              SET photo_url = %s, sort_order = %s, uploaded_at = %s 
+              WHERE photo_id = %s
+              """,
+              (photo_url, sort_order, uploaded_at, photo_id))
+
+    return jsonify({"message": f"vehicle photo {photo_id} updated successfully!"}), 200
 
 def addPhoto():
     """
@@ -333,7 +383,7 @@ def addPhoto():
     params = []
 
     for field_name, value in fields.items():
-        if not value:
+        if value is None:
             return jsonify({"message": f"{field_name} is required."}), 400
         
         params.append(value)
