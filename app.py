@@ -52,10 +52,10 @@ app.register_blueprint(supplier_bp, url_prefix="/admin/suppliers")
 app.register_blueprint(supplies_bp, url_prefix="/admin/supplies") 
 app.register_blueprint(settings_bp, url_prefix="/admin")  # /admin/settings, /admin/settings/<key>
 app.register_blueprint(auth_bp, url_prefix="/auth")
-app.register_blueprint(vehicles_bp, url_prefix="/vehicle")
+app.register_blueprint(vehicles_bp, url_prefix="/vehicles")
 app.register_blueprint(inquiry_bp, url_prefix="/inquiries")
 app.register_blueprint(profile_bp, url_prefix="/profile")
-app.register_blueprint(notif_bp, url_prefix="/notification")
+app.register_blueprint(notif_bp, url_prefix="/notifications")
 app.register_blueprint(customerportal_bp, url_prefix="/portal")
 app.register_blueprint(service_bp, url_prefix="/service")
 app.register_blueprint(documents_bp)  # /admin/settings, /admin/settings/<key>
