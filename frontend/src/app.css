@@ -1,0 +1,94 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+:root {
+  /* Primary — royal blue */
+  --primary: #4169E1;
+  --primary-light: #6B8FF7;
+  --primary-dark: #2A4DB5;
+  --primary-bg: #EFF3FF;
+
+  /* Accent — gold */
+  --accent: white;
+  --accent-dark: #c9a84c;
+
+  /* Neutrals */
+  --bg-main: #f5f7fb;
+  --bg-card: #ffffff;
+  --bg-stat: #f8f7f4;
+  --bg-muted: #f9fafb;
+  --bg-canvas: #fafaf9;
+
+  /* Borders */
+  --border: #e5e7eb;
+  --border-light: #f0f0f0;
+  --border-lighter: #f3f4f6;
+
+  /* Text */
+  --text-primary: #292944;
+  --text-muted: #9ca3af;
+  --text-light: #7f848d;
+  --text-white: #ffffff;
+  --text-dark: #28334a;
+
+  /* Status green — success, completed, confirmed, available */
+  --success: #2e9a6b;
+  --success-bg: #EAF3DE;
+  --success-text: #27500A;
+  --success-dark: #3B6D11;
+
+  /* Status amber/warning — pending */
+  --warning: #b45309;
+  --warning-bg: #FAEEDA;
+  --warning-bg-light: #fffbeb;
+  --warning-text: #633806;
+  --warning-dark: #854F0B;
+
+  /* Status red — danger, cancelled, urgent */
+  --danger: #a32d2d;
+  --danger-bg: #FCEBEB;
+  --danger-text: #791F1F;
+
+  /* Status blue — info, assigned, open */
+  --info: #185FA5;
+  --info-bg: #E6F1FB;
+  --info-text: #0C447C;
+
+  /* Surfaces */
+  --bg-hover: #f3f4f6;
+  --bg-hover-light: #f9fafb;
+
+  /* Additional blues */
+  --blue: #3b82f6;
+  --blue-dark: #1e3a5f;
+  --blue-bg: #f0f7ff;
+
+  /* Additional reds */
+  --red: #ef4444;
+  --red-bg: #fef2f2;
+  --danger-hover: #e74c3c;
+
+  /* Chart */
+  --chart-grid: #f0f0f0;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+
+  /* Fonts */
+  --font-sans: 'Syne', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+
+  --font-inter: 'Inter', sans-serif;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
