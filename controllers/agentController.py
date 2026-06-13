@@ -44,10 +44,24 @@ def getDashboard():
                                 """,
                                 (current_agent,),
                                 fetch="all")
-  
+
+  commission_trend = run_query("""
+      SELECT
+          DATE_FORMAT(s.sale_date, '%Y-%m') as month,
+          COALESCE(SUM(s.selling_price * (ad.default_commission_rate * 0.01)), 0) as total_commission,
+          COALESCE(SUM(s.selling_price), 0) as total_revenue
+      FROM sales s
+      JOIN agent_details ad ON s.agent_id = ad.user_id
+      WHERE ad.user_id = %s
+        AND s.sale_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+      GROUP BY month
+      ORDER BY month ASC
+  """, (current_agent,), fetch="all")
+
   data["inquiries"] = assigned_inquiries
   data["pending_tasks"] = pending_tasks
   data["commissions_and_sales"] = total_commissions
+  data["commission_trend"] = commission_trend
   
   return jsonify({"data": data}), 200
 

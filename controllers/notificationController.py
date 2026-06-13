@@ -65,3 +65,62 @@ def markAsRead(notif_id):
     read_notif(notif_id)
 
     return jsonify({"message": "Marked as read"}), 200
+
+
+def getRecentNotifications():
+    """Return the 6 most recent notifications for the current user (read + unread)."""
+    user_id = session.get("user")
+    if not user_id:
+        return jsonify({"message": "Not authenticated"}), 403
+
+    rows = run_query("""
+        SELECT notification_id, title, message, channel, ref_type, ref_id, is_read, created_at
+        FROM notifications
+        WHERE user_id = %s
+        ORDER BY created_at DESC
+        LIMIT 6
+    """, (user_id,), fetch="all")
+
+    result = []
+    for row in rows or []:
+        result.append({
+            "id": row["notification_id"],
+            "title": row["title"],
+            "message": row["message"],
+            "channel": row["channel"],
+            "ref_type": row["ref_type"],
+            "ref_id": row["ref_id"],
+            "is_read": bool(row["is_read"]),
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        })
+
+    return jsonify({"data": result}), 200
+
+
+def getAllNotifications():
+    """Return ALL notifications for the current user, newest first."""
+    user_id = session.get("user")
+    if not user_id:
+        return jsonify({"message": "Not authenticated"}), 403
+
+    rows = run_query("""
+        SELECT notification_id, title, message, channel, ref_type, ref_id, is_read, created_at
+        FROM notifications
+        WHERE user_id = %s
+        ORDER BY created_at DESC
+    """, (user_id,), fetch="all")
+
+    result = []
+    for row in rows or []:
+        result.append({
+            "id": row["notification_id"],
+            "title": row["title"],
+            "message": row["message"],
+            "channel": row["channel"],
+            "ref_type": row["ref_type"],
+            "ref_id": row["ref_id"],
+            "is_read": bool(row["is_read"]),
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        })
+
+    return jsonify({"data": result}), 200

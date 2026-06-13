@@ -45,6 +45,8 @@ from routes.settings import settings_bp
 from routes.documents import documents_bp
 from routes.supplier import supplier_bp
 from routes.supplies import supplies_bp
+from routes.finance_staff import finance_staff_bp
+from routes.service_advisor import service_advisor_bp
 
 # ── Blueprint registration ───────────────────────────────────────────────
 app.register_blueprint(admin_bp, url_prefix="/admin")
@@ -61,7 +63,8 @@ app.register_blueprint(service_bp, url_prefix="/service")
 app.register_blueprint(documents_bp)  # /admin/settings, /admin/settings/<key>
 app.register_blueprint(sales_bp)           # no prefix — uses /admin/... and /sales/... internally
 app.register_blueprint(agent_bp)
- 
+app.register_blueprint(finance_staff_bp, url_prefix="/finance_staff")
+app.register_blueprint(service_advisor_bp, url_prefix="/service_advisor")
 
 
 # ── CORS ─────────────────────────────────────────────────────────────────
@@ -77,6 +80,7 @@ app.config["CACHE_REDIS_URL"] = os.getenv("CACHE_REDIS_URL", "")
 cache.init_app(app)
 
 # ── Session configuration ────────────────────────────────────────────────
+app.config["SESSION_COOKIE_NAME"] = "automatik_session"
 app.config["SESSION_COOKIE_HTTPONLY"] = True          # Not accessible via JS
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"         # CSRF protection
 debug = os.getenv("FLASK_DEBUG", "0") == "1"
@@ -130,4 +134,5 @@ def indexLogs():
 
 # ── Entry point ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
-   socketio.run(app, host="0.0.0.0", debug=debug, allow_unsafe_werkzeug=debug)
+   port = int(os.getenv("PORT", 8000))
+   socketio.run(app, host="0.0.0.0", port=port, debug=debug, allow_unsafe_werkzeug=debug)

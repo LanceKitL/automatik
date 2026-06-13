@@ -8,7 +8,7 @@ PUT  /notification/read/<id> — mark a notification as read
 
 from flask import Blueprint, render_template
 from validators.middleware import logged_in_required
-from controllers.notificationController import getNotifications, markAsRead
+from controllers.notificationController import getNotifications, markAsRead, getRecentNotifications, getAllNotifications
 
 notif_bp = Blueprint("notification", __name__)
 
@@ -23,6 +23,20 @@ def index():
 def list_notifications():
     """Fetch all unread notifications for the current user."""
     return getNotifications()
+
+@notif_bp.route("/recent", methods=["GET"])
+@logged_in_required
+def recent_notifications():
+    """Return 6 most recent notifications for the current user."""
+    return getRecentNotifications()
+
+
+@notif_bp.route("/all", methods=["GET"])
+@logged_in_required
+def all_notifications():
+    """Return all notifications for the current user."""
+    return getAllNotifications()
+
 
 @notif_bp.route("/read/<int:notif_id>", methods=["PUT"])
 @logged_in_required

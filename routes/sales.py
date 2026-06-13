@@ -9,7 +9,7 @@ from validators.middleware import role_required, logged_in_required
 from controllers.salesController import (
     listSales, getSale, createSale, updateSaleStatus,
     getMySales, getMySale,
-    getSaleContract, createContract, signContract,
+    getSaleContract, createContract, signContract, updateContract,
     listInsurance, addInsurance, updateInsurance,
     listLoans, getLoan, createLoan, updateLoanStatus, getLoanSchedule, getMyLoans,
     updateAmortizationStatus, getOverdueAmortizations, recomputeAmortization
@@ -93,6 +93,13 @@ def create_new_contract(sale_id):
 def sign_sale_contract(sale_id):
     """Sign (finalise) a sale contract."""
     return signContract(sale_id)
+
+@sales_bp.route("/admin/sales/<int:sale_id>/contract", methods=["PUT"])
+@logged_in_required
+@role_required("admin")
+def update_sale_contract(sale_id):
+    """Update contract URL and/or status."""
+    return updateContract(sale_id)
 
 # ══════════════════════════════════════════════════════════════════════════
 # INSURANCE

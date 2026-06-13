@@ -14,7 +14,10 @@ from controllers.customerportalController import (
     get_documents,
     get_document,
     get_amortization_schedule,
-    get_insurance
+    get_insurance,
+    getRecentNotifications,
+    getAllNotifications,
+    reserveVehicle,
 )
 from controllers.vehicleController import (
     getVehicles,
@@ -33,6 +36,8 @@ from controllers.notificationController import (
     getNotifications,
     markAsRead
 )
+
+from controllers.paymentsController import uploadPaymentProof
 
 customerportal_bp = Blueprint("customerportal", __name__)
 
@@ -73,6 +78,17 @@ def vehicle_detail(vehicle_id):
     """
     return showVehicle(vehicle_id)
 
+
+@customerportal_bp.route("/vehicles/<int:vehicle_id>/reserve", methods=["POST"])
+@logged_in_required
+@role_required("customer")
+def reserve_vehicle(vehicle_id):
+    """POST /customer-portal/vehicles/<vehicle_id>/reserve
+    Reserve a vehicle (changes status to 'reserved', creates an inquiry).
+    Requires logged-in customer role.
+    """
+    return reserveVehicle(vehicle_id)
+
 # --------- OWN SALES ------------
 @customerportal_bp.route("/sales")
 @logged_in_required
@@ -108,6 +124,17 @@ def payment():
     Delegates to customerportalController.get_payment_history().
     """
     return get_payment_history()
+
+@customerportal_bp.route("/payments/<int:payment_id>/upload-proof", methods=["POST"])
+@logged_in_required
+@role_required("customer")
+def payment_upload_proof(payment_id):
+    """POST /customer-portal/payments/<payment_id>/upload-proof
+    Upload a screenshot as proof of payment.
+    Requires logged-in customer role.
+    Delegates to paymentsController.uploadPaymentProof(payment_id).
+    """
+    return uploadPaymentProof(payment_id)
 
 # --------- FULL AMORTIZATION SCHEDULE ------------
 @customerportal_bp.route('/amortization')
@@ -173,6 +200,26 @@ def inquiry_detail(inquiry_id):
     return get_customer_inquiry(inquiry_id)
 
 # --------- NOTIFICATIONS ------------
+@customerportal_bp.route("/notifications/recent")
+@logged_in_required
+@role_required("customer")
+def recent_notifications():
+    """GET /customer-portal/notifications/recent
+    Return the 6 most recent notifications (read + unread).
+    """
+    return getRecentNotifications()
+
+
+@customerportal_bp.route("/notifications/all")
+@logged_in_required
+@role_required("customer")
+def all_notifications():
+    """GET /customer-portal/notifications/all
+    Return all notifications for the authenticated customer.
+    """
+    return getAllNotifications()
+
+
 @customerportal_bp.route("/notifications")
 @logged_in_required
 @role_required("customer")
@@ -184,6 +231,7 @@ def notifications():
     Delegates to customerportalController.get_notifications().
     """
     return getNotifications()
+
 
 @customerportal_bp.route("/notifications/<int:notification_id>/read", methods=["PUT"])
 @logged_in_required

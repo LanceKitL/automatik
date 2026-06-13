@@ -137,6 +137,41 @@ def _create_customer_from_inquiry(inquiry, conn, cursor):
 
 # --- SALES ---
 
+def getEligibleSalesForLoan():
+    """
+    Return all installment sales that do NOT yet have a loan record.
+
+    Queries:
+        - sales table (payment_type = 'installment')
+        - LEFT JOIN with loan_details to exclude sales that already have a loan.
+        - JOIN with users (customer), vehicles for display.
+
+    Returns:
+        tuple: (jsonify({"data": [...]}), 200) — each entry includes sale_id,
+            customer name, vehicle brand/model/year, selling_price, and sale_date.
+    """
+    rows = run_query("""
+        SELECT
+            s.sale_id,
+            s.selling_price,
+            s.sale_date,
+            cu.username AS customer_name,
+            cu.user_id AS customer_id,
+            v.brand,
+            v.model,
+            v.year,
+            v.vehicle_id
+        FROM sales s
+        JOIN users cu ON s.customer_id = cu.user_id
+        JOIN vehicles v ON s.vehicle_id = v.vehicle_id
+        LEFT JOIN loan_details l ON s.sale_id = l.sale_id
+        WHERE s.payment_type = 'installment'
+          AND l.loan_id IS NULL
+        ORDER BY s.sale_date DESC
+    """, fetch="all")
+    return jsonify({"data": rows}), 200
+
+
 def listSales():
     """
         This will return the ff:
@@ -210,7 +245,9 @@ def listSales():
                 "sale_id": row["sale_id"],
                 "payment_type": row["payment_type"],
                 "sale_date": row["sale_date"],
-                "status": row["status"]
+                "status": row["status"],
+                "inquiry_id": row["inquiry_id"],
+                "selling_price": row["selling_price"]
             },
 
             "customer": {
@@ -375,8 +412,8 @@ def createSale():
             "message": f"Missing required fields: {', '.join(missing)}."
         }), 400
 
-    if payment_type not in ('cash', 'installment'):
-        return jsonify({"message": "payment_type must be 'cash' or 'installment'."}), 400
+    if payment_type not in ('full_payment', 'installment'):
+        return jsonify({"message": "payment_type must be 'full_payment' or 'installment'."}), 400
 
     try:
         selling_price = float(selling_price)
@@ -704,6 +741,63 @@ def signContract(sale_id):
     return jsonify({"message": "Contract signed successfully."}), 200
 
 
+def updateContract(sale_id):
+    """
+    Update contract URL and/or status for a sale.
+    Accepts 'contract_url' (optional) and 'status' (optional).
+    Valid status transitions: draft → pending_signature → signed → cancelled.
+    """
+    sale = run_query("SELECT sale_id, status FROM sales WHERE sale_id = %s", (sale_id,), fetch="one")
+    if not sale:
+        return jsonify({"message": "Sale not found."}), 404
+
+    contract = run_query("SELECT * FROM sales_contracts WHERE sale_id = %s", (sale_id,), fetch="one")
+    if not contract:
+        return jsonify({"message": "Contract not found. Create it first."}), 404
+
+    data = request.get_json(silent=True) or {}
+    contract_url = data.get("contract_url")
+    new_status = data.get("status")
+
+    if not contract_url and not new_status:
+        return jsonify({"message": "Provide at least 'contract_url' or 'status' to update."}), 400
+
+    allowed_statuses = ("draft", "pending_signature", "signed", "cancelled")
+    if new_status and new_status not in allowed_statuses:
+        return jsonify({"message": f"Invalid status. Must be one of {', '.join(allowed_statuses)}."}), 400
+
+    updates = []
+    values = []
+    if contract_url is not None:
+        updates.append("contract_url = %s")
+        values.append(contract_url)
+    if new_status:
+        updates.append("status = %s")
+        values.append(new_status)
+        if new_status == "signed":
+            updates.append("signed_at = %s")
+            values.append(datetime.now())
+            updates.append("reviewed_by = %s")
+            values.append(session["user"])
+
+    if not updates:
+        return jsonify({"message": "No changes to apply."}), 400
+
+    values.append(sale_id)
+    run_query(f"UPDATE sales_contracts SET {', '.join(updates)} WHERE sale_id = %s", tuple(values))
+
+    audit_log(
+        session["user"],
+        "PUT",
+        "sales_contracts",
+        contract["contract_id"],
+        None,
+        json.dumps(data, default=str)
+    )
+
+    return jsonify({"message": "Contract updated successfully."}), 200
+
+
 # --- INSURANCE ---
 
 def listInsurance():
@@ -716,6 +810,20 @@ def listInsurance():
         ORDER BY i.start_date DESC
     """, fetch="all")
 
+    return jsonify({"data": result}), 200
+
+
+def getInsurance(insurance_id):
+    result = run_query("""
+        SELECT i.*, s.sale_id, v.brand, v.model, v.year, cu.username AS customer_name
+        FROM insurance_records i
+        JOIN sales s ON i.sale_id = s.sale_id
+        JOIN vehicles v ON s.vehicle_id = v.vehicle_id
+        JOIN users cu ON s.customer_id = cu.user_id
+        WHERE i.insurance_id = %s
+    """, (insurance_id,), fetch="one")
+    if not result:
+        return jsonify({"message": "Insurance record not found."}), 404
     return jsonify({"data": result}), 200
 
 
@@ -811,6 +919,7 @@ def updateInsurance(insurance_id):
 
 def listLoans():
     bank_approval_status = request.args.get("bank_approval_status")
+    without_insurance = request.args.get("without_insurance")
     query = """
         SELECT l.*, s.sale_id, v.brand, v.model, cu.username AS customer_name
         FROM loan_details l
@@ -823,6 +932,10 @@ def listLoans():
     if bank_approval_status:
         query += " AND l.bank_approval_status = %s"
         params.append(bank_approval_status)
+    if without_insurance:
+        query += """ AND s.sale_id NOT IN (
+            SELECT sale_id FROM insurance_records WHERE sale_id IS NOT NULL
+        )"""
     query += " ORDER BY l.loan_id DESC"
     result = run_query(query, tuple(params), fetch="all")
     return jsonify({"data": result}), 200
@@ -842,9 +955,11 @@ def getLoan(loan_id):
         return jsonify({"message": "Loan not found."}), 404
 
     schedule = run_query("""
-        SELECT * FROM amortization_schedule
-        WHERE loan_id = %s
-        ORDER BY month_number
+        SELECT a.*, p.proof_of_payment, p.payment_id
+        FROM amortization_schedule a
+        LEFT JOIN payments p ON a.schedule_id = p.schedule_id AND p.payment_allocation = 'amortization'
+        WHERE a.loan_id = %s
+        ORDER BY a.month_number
     """, (loan_id,), fetch="all")
 
     loan["amortization_schedule"] = schedule
@@ -852,7 +967,6 @@ def getLoan(loan_id):
 
 
 def createLoan(sale_id):
-    sale = run_query("SELECT * FROM sales WHERE sale_id = %s", (sale_id,), fetch="one")
     if not sale:
         return jsonify({"message": "Sale not found."}), 404
 

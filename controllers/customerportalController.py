@@ -776,3 +776,128 @@ def create_customer_warranty_claim():
         "message": "Warranty claim submitted successfully.",
         "claim_id": claim_id,
     }), 201
+
+
+# --- RESERVE VEHICLE ---
+
+def reserveVehicle(vehicle_id):
+    """Reserve a vehicle (status → 'reserved'), creates an inquiry."""
+    customer_id = session["user"]
+
+    # Check vehicle exists and is available
+    vehicle = run_query(
+        "SELECT vehicle_id, status, make, model FROM vehicles WHERE vehicle_id = %s",
+        (vehicle_id,), fetch="one"
+    )
+    if not vehicle:
+        return jsonify({"message": "Vehicle not found."}), 404
+
+    if vehicle["status"] in ("reserved", "sold"):
+        return jsonify({"message": "Vehicle is already reserved or sold."}), 400
+
+    conn, cursor = get_db()
+    try:
+        # Mark vehicle as reserved
+        run_query(
+            "UPDATE vehicles SET status = 'reserved' WHERE vehicle_id = %s",
+            (vehicle_id,), conn=conn, cursor=cursor
+        )
+
+        # Create inquiry
+        inquiry_id = run_query("""
+            INSERT INTO inquiries (user_id, vehicle_id, message, status)
+            VALUES (%s, %s, %s, %s)
+        """, (customer_id, vehicle_id, "I would like to reserve this vehicle.", "open"),
+            conn=conn, cursor=cursor)
+
+        if not inquiry_id:
+            conn.rollback()
+            return jsonify({"message": "Failed to create reservation."}), 500
+
+        audit_log(customer_id, "POST", "inquiries", inquiry_id, conn=conn, cursor=cursor)
+
+        # Notify agents
+        broadcast_notif(
+            role="agent",
+            title="Vehicle Reserved",
+            message=f"Customer reserved {vehicle['make']} {vehicle['model']} (#{vehicle_id}).",
+            channel="in_app",
+            ref_type="inquiries",
+            ref_id=inquiry_id,
+        )
+
+        # Notify the customer
+        fire_notif(
+            user_id=customer_id,
+            title="Reservation Confirmed",
+            message=f"You have reserved the {vehicle['make']} {vehicle['model']}. An agent will follow up.",
+            channel="in_app",
+            ref_type="inquiries",
+            ref_id=inquiry_id,
+        )
+
+        conn.commit()
+        return jsonify({"message": "Vehicle reserved successfully!", "inquiry_id": inquiry_id}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"message": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# --- NOTIFICATIONS ---
+
+def getRecentNotifications():
+    """Return the 6 most recent notifications (read + unread) for the logged-in customer."""
+    customer_id = session["user"]
+
+    rows = run_query("""
+        SELECT notification_id, title, message, channel, ref_type, ref_id, is_read, created_at
+        FROM notifications
+        WHERE user_id = %s
+        ORDER BY created_at DESC
+        LIMIT 6
+    """, (customer_id,), fetch="all")
+
+    result = []
+    for row in rows or []:
+        result.append({
+            "id": row["notification_id"],
+            "title": row["title"],
+            "message": row["message"],
+            "channel": row["channel"],
+            "ref_type": row["ref_type"],
+            "ref_id": row["ref_id"],
+            "is_read": bool(row["is_read"]),
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        })
+
+    return jsonify({"data": result}), 200
+
+
+def getAllNotifications():
+    """Return ALL notifications for the logged-in customer, newest first."""
+    customer_id = session["user"]
+
+    rows = run_query("""
+        SELECT notification_id, title, message, channel, ref_type, ref_id, is_read, created_at
+        FROM notifications
+        WHERE user_id = %s
+        ORDER BY created_at DESC
+    """, (customer_id,), fetch="all")
+
+    result = []
+    for row in rows or []:
+        result.append({
+            "id": row["notification_id"],
+            "title": row["title"],
+            "message": row["message"],
+            "channel": row["channel"],
+            "ref_type": row["ref_type"],
+            "ref_id": row["ref_id"],
+            "is_read": bool(row["is_read"]),
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        })
+
+    return jsonify({"data": result}), 200
