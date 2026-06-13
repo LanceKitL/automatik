@@ -7,16 +7,26 @@ All endpoints require admin role.
 from flask import Blueprint
 from validators.middleware import role_required, logged_in_required
 from controllers.adminController import (
+    adminDashboard,
+    adminVehicles,
+    adminInventory,
+    uploadVehiclePhoto,
+    adminNotifications,
+    adminAuditLogs,
     get_user,
     get_user_with,
     get_user_profile_with,
     update_user_with,
+    updateUserProfile,
     delete_user_with,
+    createUser,
     get_agents,
     update_commission_rate,
+    getAgentDetail,
     get_customers,
     get_customer_with,
-    update_customer_with
+    update_customer_with,
+    getCustomerSalesHistory,
 )
 from controllers.serviceController import (
     listAllBookingsHandler,
@@ -25,8 +35,61 @@ from controllers.serviceController import (
     getWarrantyClaimDetailHandler,
     updateWarrantyStatusHandler,
 )
+from controllers.documentsController import getAllDocuments
 
 admin_bp = Blueprint('admin', __name__)
+
+# ── Dashboard ────────────────────────────────────────────────────────────
+
+@admin_bp.route('/dashboard')
+@logged_in_required
+@role_required("admin")
+def dashboard():
+    """Aggregated stats for admin home."""
+    return adminDashboard()
+
+# ── Vehicles / Inventory ──────────────────────────────────────────────────
+
+@admin_bp.route("/vehicles")
+@logged_in_required
+@role_required("admin")
+def vehicles():
+    """List all vehicles (admin view — all statuses)."""
+    return adminVehicles()
+
+
+@admin_bp.route("/inventory")
+@logged_in_required
+@role_required("admin")
+def inventory():
+    """Combined inventory data: vehicles (with photos), suppliers, supplies, low-stock."""
+    return adminInventory()
+
+
+@admin_bp.route("/inventory/photos", methods=["POST"])
+@logged_in_required
+@role_required("admin")
+def upload_photo():
+    """Upload a vehicle photo (multipart/form-data)."""
+    return uploadVehiclePhoto()
+
+# ── Notifications ────────────────────────────────────────────────────────
+
+@admin_bp.route("/notifications")
+@logged_in_required
+@role_required("admin")
+def notifications():
+    """In-app notifications for the current admin."""
+    return adminNotifications()
+
+# ── Audit Logs ───────────────────────────────────────────────────────────
+
+@admin_bp.route("/audit_logs")
+@logged_in_required
+@role_required("admin")
+def audit_logs():
+    """Audit log entries (ordered newest first)."""
+    return adminAuditLogs()
 
 # ── Users ────────────────────────────────────────────────────────────────
 
@@ -58,11 +121,25 @@ def update_user(user_id):
     """Update user account fields (username, email, role, etc.)."""
     return update_user_with(user_id)
 
+@admin_bp.route("/users", methods=["POST"])
+@logged_in_required
+@role_required("admin")
+def create_user():
+    """Create a new user (admin/agent/customer)."""
+    return createUser()
+
+@admin_bp.route("/users/<int:user_id>/profile", methods=["PUT"])
+@logged_in_required
+@role_required("admin")
+def update_user_profile(user_id):
+    """Update user_profile fields for a user."""
+    return updateUserProfile(user_id)
+
 @admin_bp.route("/users/<int:user_id>/delete", methods=["DELETE"])
 @logged_in_required
 @role_required("admin")
 def delete_user(user_id):
-    """Soft-delete or deactivate a user."""
+    """Delete a user."""
     return delete_user_with(user_id)
 
 # ── Agents ───────────────────────────────────────────────────────────────
@@ -80,6 +157,13 @@ def index_agents():
 def update_agent(agent_id):
     """Update an agent's default commission rate."""
     return update_commission_rate(agent_id)
+
+@admin_bp.route("/agents/<int:agent_id>")
+@logged_in_required
+@role_required("admin")
+def show_agent(agent_id):
+    """Get agent details including total sales count."""
+    return getAgentDetail(agent_id)
 
 # ── Customers ────────────────────────────────────────────────────────────
 
@@ -103,8 +187,23 @@ def show_customer(customer_id):
 def update_customer(customer_id):
     """Update customer details record."""
     return update_customer_with(customer_id)
-def update_customer(customer_id): return update_customer_with(customer_id)
 
+@admin_bp.route("/customer/<int:customer_id>/sales")
+@logged_in_required
+@role_required("admin")
+def customer_sales_history(customer_id):
+    """Get sales history for a customer."""
+    return getCustomerSalesHistory(customer_id)
+
+
+# --- Admin: Documents ---
+
+@admin_bp.route("/service/documents")
+@logged_in_required
+@role_required("admin")
+def admin_documents():
+    """List all documents."""
+    return getAllDocuments()
 
 # --- Admin: Service Bookings ---
 
@@ -130,6 +229,13 @@ def complete_booking(booking_id):
 
 
 # --- Admin: Warranty Claims ---
+
+@admin_bp.route("/service/warranty")
+@logged_in_required
+@role_required("admin")
+def index_warranty_alias():
+    """Alias for /admin/warranty — list all warranty claims."""
+    return listAllWarrantyClaimsHandler()
 
 @admin_bp.route("/warranty")
 @logged_in_required

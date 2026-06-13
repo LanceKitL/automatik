@@ -9,3 +9,6 @@ scripts
 tests
 *.log
 opencode.json
+
+# Folders
+/REVISION

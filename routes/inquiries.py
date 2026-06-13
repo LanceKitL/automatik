@@ -16,7 +16,10 @@ from controllers.inquiriesController import (
     displayInquiries,
     indexCustomerInquiries,
     assignInquiry,
+    selfAssignInquiry,
     resolveInquiry,
+    convertInquiryToSale,
+    sendEmailForInquiry,
     closeInquiry
 )
 
@@ -54,12 +57,33 @@ def close_inquiry(inquiry_id):
 
 # ── Agent ────────────────────────────────────────────────────────────────
 
+@inquiry_bp.route("/self-assign/<int:inquiry_id>", methods=["PUT"])
+@logged_in_required
+@role_required("agent")
+def self_assign_task(inquiry_id):
+    """Self-assign an open inquiry to the current agent."""
+    return selfAssignInquiry(inquiry_id)
+
 @inquiry_bp.route("/resolve/<int:inquiry_id>", methods=["PUT"])
 @logged_in_required
 @role_required("agent")
 def resolve_task(inquiry_id):
     """Mark an inquiry as resolved (agent action)."""
     return resolveInquiry(inquiry_id)
+
+@inquiry_bp.route("/convert-to-sale/<int:inquiry_id>", methods=["PUT"])
+@logged_in_required
+@role_required("agent", "admin")
+def convert_to_sale(inquiry_id):
+    """Convert an assigned inquiry into a sale."""
+    return convertInquiryToSale(inquiry_id)
+
+@inquiry_bp.route("/<int:inquiry_id>/send-email", methods=["POST"])
+@logged_in_required
+@role_required("agent")
+def send_email(inquiry_id):
+    """Send a custom email to the customer and auto-resolve the inquiry."""
+    return sendEmailForInquiry(inquiry_id)
 
 # ── Customer ─────────────────────────────────────────────────────────────
 

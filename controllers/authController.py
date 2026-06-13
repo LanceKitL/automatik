@@ -88,6 +88,9 @@ def loginHandler():
     if user["email_verified"] != 1:
         return jsonify({"message": "Account is not verified. Please verify your email."}), 403
     
+    if user["is_active"] == 0:
+        return jsonify({"message": "Your account is disabled. Contact support to reactivate your account."}), 403
+    
     # check if the password match
     if not check_password_hash(user["hashed_password"], password):
         return jsonify({"message": "Invalid Credentials."}),403
@@ -97,15 +100,15 @@ def loginHandler():
     session["role"] = user["role"] # store the user role
     session.permanent = True # activate the expiration time
 
-
-    # update to active
-    run_query(""" 
-              UPDATE users SET is_active = %s 
-              WHERE user_id = %s 
-              """, 
-              (1,session["user"]))
-    
-    return jsonify({"message": "Logged in successfull!"}), 200
+    return jsonify({
+        "message": "Logged in successfully!",
+        "user": {
+            "user_id": user["user_id"],
+            "role": user["role"],
+            "email": user["email"],
+            "username": user["username"],
+        }
+    }), 200
     
 def customerAccountHandler():
     data = request.get_json(silent=True) or {}
@@ -337,10 +340,10 @@ def logoutHandler():
     user = session["user"]
     last_login = datetime.now()
     run_query("""
-              UPDATE users SET last_login = %s, is_active = %s 
+              UPDATE users SET last_login = %s
               WHERE user_id = %s 
               """, 
-              (last_login,0, user))
+              (last_login, user))
     
     session.clear()
     return jsonify({"message": "Logged out success."}), 200
@@ -471,7 +474,7 @@ def forgotPassword():
     if not token:
         return jsonify({"message": "Token generation failed."}), 500
 
-    reset_url = f"http://{get_local_ip()}:5000/auth/reset-password?token_id={token['token_id']}&raw_token={token['raw_token']}"
+    reset_url = f"http://localhost:5173/auth/reset-password?token_id={token['token_id']}&raw_token={token['raw_token']}"
     send_password_reset(email, reset_url)
 
     return jsonify({"message": "If that email exists, a reset link has been sent."}), 200

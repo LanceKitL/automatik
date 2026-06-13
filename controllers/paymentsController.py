@@ -4,7 +4,8 @@ from utils.notification import fire_notif
 from services.mail_service import send_payment_receipt
 from conn import run_query, get_db, Error
 from datetime import datetime
-import json
+from werkzeug.utils import secure_filename
+import json, os
 
 
 def listPayments():
@@ -72,6 +73,7 @@ def recordPayment(sale_id):
     payment_method = data.get("payment_method")
     schedule_id = data.get("schedule_id")
     reference = data.get("reference")
+    payment_allocation = data.get("payment_allocation")
 
     if not all([amount_paid, payment_method]):
         return jsonify({"message": "amount_paid and payment_method are required."}), 400
@@ -87,6 +89,10 @@ def recordPayment(sale_id):
     valid_methods = ("cash", "bank_transfer", "check", "online")
     if payment_method not in valid_methods:
         return jsonify({"message": f"payment_method must be one of {valid_methods}."}), 422
+
+    valid_allocations = ("amortization", "insurance", "service_fee", "downpayment", "full_cash", "maintenance", "repair")
+    if payment_allocation and payment_allocation not in valid_allocations:
+        return jsonify({"message": f"payment_allocation must be one of {valid_allocations}."}), 422
 
     conn, cursor = get_db()
     try:
@@ -106,9 +112,9 @@ def recordPayment(sale_id):
                 return jsonify({"message": "This schedule entry is already paid."}), 409
 
         payment_id = run_query("""
-            INSERT INTO payments (sale_id, schedule_id, amount_paid, payment_method, payment_date, recorded_by, reference)
-            VALUES (%s,%s,%s,%s,NOW(),%s,%s)
-        """, (sale_id, schedule_id, amount_paid, payment_method, session["user"], reference), conn=conn, cursor=cursor)
+            INSERT INTO payments (sale_id, schedule_id, amount_paid, payment_method, payment_date, recorded_by, reference, payment_allocation)
+            VALUES (%s,%s,%s,%s,NOW(),%s,%s,%s)
+        """, (sale_id, schedule_id, amount_paid, payment_method, session["user"], reference, payment_allocation), conn=conn, cursor=cursor)
 
         if schedule_id:
             run_query("UPDATE amortization_schedule SET status = 'paid' WHERE schedule_id = %s", (schedule_id,), conn=conn, cursor=cursor)
@@ -189,3 +195,40 @@ def getPaymentSummary():
     query += " GROUP BY YEAR(payment_date), MONTH(payment_date) ORDER BY year DESC, month DESC"
     result = run_query(query, tuple(params), fetch="all")
     return jsonify({"data": result}), 200
+
+
+def uploadPaymentProof(payment_id):
+    payment = run_query("""
+        SELECT p.*, s.customer_id FROM payments p
+        JOIN sales s ON p.sale_id = s.sale_id
+        WHERE p.payment_id = %s
+    """, (payment_id,), fetch="one")
+    if not payment:
+        return jsonify({"message": "Payment not found."}), 404
+
+    customer_id = session.get("user")
+    if payment["customer_id"] != customer_id:
+        return jsonify({"message": "Unauthorized."}), 403
+
+    if "file" not in request.files:
+        return jsonify({"message": "No file provided."}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"message": "Empty filename."}), 400
+
+    upload_dir = os.path.join("static", "uploads", "payments")
+    os.makedirs(upload_dir, exist_ok=True)
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+    filename = f"{int(datetime.now().timestamp())}_{payment_id}.{ext}"
+    filepath = os.path.join(upload_dir, filename)
+    file.save(filepath)
+
+    proof_url = f"/static/uploads/payments/{filename}"
+    run_query(
+        "UPDATE payments SET proof_of_payment = %s WHERE payment_id = %s",
+        (proof_url, payment_id),
+    )
+
+    return jsonify({"message": "Proof uploaded successfully.", "proof_of_payment": proof_url}), 200

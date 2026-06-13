@@ -1,9 +1,11 @@
-from conn import run_query
+from conn import run_query, get_db, Error
 from flask import session, jsonify, request
 from datetime import datetime
-from utils.log import audit_log
+from decimal import Decimal, ROUND_HALF_UP
+from utils.log import audit_log, get_local_ip
 from utils.notification import fire_notif, broadcast_notif
-from services.mail_service import inquiry_received
+from services.mail_service import inquiry_received, send_sale_confirmation, send_custom_email
+from controllers.salesController import insert_agent_commission, generate_amortization_schedule, _create_customer_from_inquiry
 import json
 # inquiry_id
 # user_id
@@ -256,6 +258,85 @@ def assignInquiry(inquiry_id):
 
     return jsonify({"message": "Inquiry assigned successfully!"}), 200
 
+def selfAssignInquiry(inquiry_id):
+    """
+    AGENT PORTAL
+
+    Agent self-assigns an open inquiry to themselves.
+    No request body needed — agent_id comes from session.
+    """
+    if not inquiry_id:
+        return jsonify({"message": "inquiry_id is required."}), 400
+
+    inquiry = run_query("SELECT * FROM inquiries WHERE inquiry_id = %s",
+                        (inquiry_id,), fetch="one")
+    if not inquiry:
+        return jsonify({"message": "Inquiry not found."}), 404
+
+    if inquiry["status"] != "open":
+        return jsonify({"message": f"Inquiry is already '{inquiry['status']}'. Only 'open' inquiries can be assigned."}), 400
+
+    if inquiry.get("agent_id"):
+        return jsonify({"message": "Inquiry already has an agent assigned."}), 409
+
+    agent_id = session["user"]
+    old_value = inquiry["status"]
+
+    run_query("""
+        UPDATE inquiries SET agent_id = %s, status = 'assigned'
+        WHERE inquiry_id = %s
+    """, (agent_id, inquiry_id))
+
+    new_value = {"agent_id": agent_id, "status": "assigned"}
+
+    audit_log(
+        session["user"],
+        "PUT",
+        "inquiries",
+        inquiry_id,
+        json.dumps(old_value, default=str),
+        json.dumps(new_value, default=str)
+    )
+
+    agent = run_query("SELECT username FROM users WHERE user_id = %s",
+                      (agent_id,), fetch="one")
+
+    broadcast_notif(
+        role="admin",
+        title="Inquiry Self-Assigned",
+        message=f"Agent {agent['username'] if agent else agent_id} has self-assigned inquiry #{inquiry_id}.",
+        channel="in_app",
+        ref_type="inquiries",
+        ref_id=inquiry_id
+    )
+
+    customer_name = inquiry.get("guest_name") or "Customer"
+    customer_email = inquiry.get("guest_email")
+
+    if inquiry.get("user_id"):
+        fire_notif(
+            user_id=inquiry["user_id"],
+            title="Inquiry Assigned",
+            message=f"Your inquiry #{inquiry_id} has been assigned to {agent['username'] if agent else 'an agent'}. They will contact you soon.",
+            channel="in_app",
+            ref_type="inquiries",
+            ref_id=inquiry_id
+        )
+        if not customer_email:
+            user = run_query("SELECT email FROM users WHERE user_id = %s",
+                             (inquiry["user_id"],), fetch="one")
+            customer_email = user["email"] if user else None
+
+    if customer_email:
+        try:
+            from services.mail_service import inquiry_assigned
+            inquiry_assigned(customer_email, customer_name,
+                             agent["username"] if agent else "Agent", inquiry_id)
+        except Exception:
+            pass
+
+    return jsonify({"message": "Inquiry assigned to you successfully!"}), 200
+
 def resolveInquiry(inquiry_id):
     """
     AGENT PORTAL
@@ -326,7 +407,278 @@ def resolveInquiry(inquiry_id):
         except Exception:
             pass
 
+    # ── Notify admin ──
+    broadcast_notif(
+        role="admin",
+        title="Inquiry Resolved",
+        message=f"Inquiry #{inquiry_id} has been resolved by {agent['username'] if agent else 'an agent'}.",
+        channel="in_app",
+        ref_type="inquiries",
+        ref_id=inquiry_id
+    )
+
     return jsonify({"message": "Inquiry resolved successfully."}), 200
+
+def convertInquiryToSale(inquiry_id):
+    """
+    AGENT PORTAL
+
+    Convert an assigned inquiry into a sale. Requires selling_price and
+    payment_type. The agent, vehicle, and customer are resolved from
+    the inquiry itself. Creates a sale, resolves the inquiry, and
+    handles installment loan setup if applicable.
+    """
+    if not inquiry_id:
+        return jsonify({"message": "inquiry_id is required."}), 400
+
+    inquiry = run_query("""
+        SELECT i.*, v.brand, v.model FROM inquiries i
+        JOIN vehicles v ON i.vehicle_id = v.vehicle_id
+        WHERE i.inquiry_id = %s AND i.agent_id = %s
+    """, (inquiry_id, session["user"]), fetch="one")
+
+    if not inquiry:
+        return jsonify({"message": "Inquiry not found or not assigned to you."}), 404
+
+    if inquiry["status"] != "assigned":
+        return jsonify({"message": f"Inquiry is '{inquiry['status']}'; only 'assigned' inquiries can be converted."}), 400
+
+    data = request.get_json(silent=True) or {}
+    selling_price = data.get("selling_price")
+    payment_type = data.get("payment_type")
+
+    if not selling_price or not payment_type:
+        return jsonify({"message": "selling_price and payment_type are required."}), 400
+
+    if payment_type not in ("full_payment", "installment"):
+        return jsonify({"message": "payment_type must be 'full_payment' or 'installment'."}), 400
+
+    try:
+        selling_price = float(selling_price)
+    except (TypeError, ValueError):
+        return jsonify({"message": "selling_price must be a number."}), 422
+    if selling_price < 0:
+        return jsonify({"message": "selling_price cannot be negative."}), 400
+
+    conn, cursor = get_db()
+    try:
+        vehicle_id = inquiry["vehicle_id"]
+        agent_id = session["user"]
+
+        vehicle = run_query("SELECT * FROM vehicles WHERE vehicle_id = %s FOR UPDATE",
+                            (vehicle_id,), fetch="one", conn=conn, cursor=cursor)
+        if not vehicle:
+            return jsonify({"message": "Vehicle not found."}), 404
+        if vehicle["status"] not in ("available", "reserved"):
+            return jsonify({"message": f"Vehicle status is '{vehicle['status']}'; cannot sell."}), 409
+
+        temp_password = None
+        _new_customer_ctx = None
+        if inquiry.get("user_id"):
+            customer = run_query("SELECT * FROM users WHERE user_id = %s AND role = 'customer'",
+                                 (inquiry["user_id"],), fetch="one", conn=conn, cursor=cursor)
+            if not customer:
+                return jsonify({"message": "Linked inquiry user is not a customer."}), 400
+            customer_id = customer["user_id"]
+        else:
+            if not inquiry.get("guest_name") or not inquiry.get("guest_email"):
+                return jsonify({"message": "Inquiry has no guest data. Cannot create customer."}), 400
+            new_user_id, temp_password, _new_customer_ctx = _create_customer_from_inquiry(inquiry, conn, cursor)
+            customer = run_query("SELECT * FROM users WHERE user_id = %s",
+                                 (new_user_id,), fetch="one", conn=conn, cursor=cursor)
+            customer_id = new_user_id
+
+        cursor.execute("""
+            INSERT INTO sales (vehicle_id, customer_id, agent_id, selling_price, payment_type, status, inquiry_id)
+            VALUES (%s, %s, %s, %s, %s, 'pending', %s)
+        """, (vehicle_id, customer_id, agent_id, selling_price, payment_type, inquiry_id))
+        sale_id = cursor.lastrowid
+
+        cursor.execute("""
+            UPDATE inquiries SET status = 'resolved', resolved_at = NOW(), user_id = %s
+            WHERE inquiry_id = %s
+        """, (customer_id, inquiry_id))
+
+        insert_agent_commission(cursor, sale_id, agent_id, selling_price)
+        cursor.execute("UPDATE vehicles SET status = 'reserved' WHERE vehicle_id = %s", (vehicle_id,))
+
+        audit_log(session["user"], "POST", "sales", sale_id, None,
+                  json.dumps({"vehicle_id": vehicle_id, "customer_id": customer_id,
+                              "agent_id": agent_id, "payment_type": payment_type,
+                              "selling_price": selling_price, "status": "pending",
+                              "inquiry_id": inquiry_id}, default=str),
+                  conn=conn, cursor=cursor)
+
+        cursor.execute("INSERT INTO sales_contracts (sale_id, status) VALUES (%s, 'draft')", (sale_id,))
+
+        if payment_type == "installment":
+            term_months = data.get("term_months")
+            interest_rate = data.get("interest_rate")
+            loan_amount = data.get("loan_amount")
+            down_payment = data.get("down_payment", 0)
+
+            if not all([term_months, interest_rate, loan_amount]):
+                return jsonify({"message": "term_months, interest_rate, and loan_amount are required for installment."}), 400
+
+            try:
+                term_months = int(term_months)
+                interest_rate = float(interest_rate)
+                loan_amount = float(loan_amount)
+                down_payment = float(down_payment)
+            except (TypeError, ValueError):
+                return jsonify({"message": "term_months, interest_rate, loan_amount must be numbers."}), 422
+
+            if loan_amount <= 0 or loan_amount > selling_price:
+                return jsonify({"message": "loan_amount must be > 0 and <= selling_price."}), 422
+            if term_months < 6 or term_months > 60:
+                return jsonify({"message": "term_months must be between 6 and 60."}), 422
+            if interest_rate < 0 or interest_rate > 30:
+                return jsonify({"message": "interest_rate must be between 0 and 30."}), 422
+
+            monthly_amortization = float(
+                Decimal(str(loan_amount))
+                * (Decimal(str(interest_rate)) / Decimal("100") / Decimal("12"))
+                / (1 - (1 + Decimal(str(interest_rate)) / Decimal("100") / Decimal("12")) ** -term_months)
+            ).__round__(2)
+
+            cursor.execute("""
+                INSERT INTO loan_details
+                    (sale_id, down_payment, loan_amount, interest_rate, term_months,
+                     monthly_amortization, bank_name, bank_approval_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending')
+            """, (sale_id, down_payment, loan_amount, interest_rate, term_months,
+                  monthly_amortization, 'automatik_financing'))
+
+        conn.commit()
+
+        # ── Notify finance staff ──
+        agent_user = run_query("SELECT username FROM users WHERE user_id = %s",
+                               (agent_id,), fetch="one")
+        agent_name = agent_user["username"] if agent_user else f"Agent #{agent_id}"
+        broadcast_notif(
+            role="finance_staff",
+            title="New Sale for Review",
+            message=f"{agent_name} created Sale #{sale_id} for {vehicle['brand']} {vehicle['model']} — ₱{selling_price:,.2f} ({payment_type}). Pending processing.",
+            channel="in_app",
+            ref_type="sales",
+            ref_id=sale_id
+        )
+
+        # ── post-commit notifications ──
+
+        if _new_customer_ctx:
+            try:
+                from services.mail_service import welcome_user
+                portal_url = f"http://{get_local_ip()}:5173"
+                welcome_user(_new_customer_ctx["guest_email"], "email/welcome.html",
+                             username=_new_customer_ctx["username"],
+                             temp_password=_new_customer_ctx["temp_password"],
+                             portal_url=portal_url)
+            except Exception:
+                pass
+            try:
+                fire_notif(user_id=_new_customer_ctx["user_id"], title="Account Created",
+                           message=f"Your AutoMatik account ({_new_customer_ctx['username']}) has been created. Welcome!",
+                           channel="in_app", ref_type="users", ref_id=_new_customer_ctx["user_id"])
+            except Exception:
+                pass
+
+        try:
+            vehicle_name = f"{vehicle['brand']} {vehicle['model']}"
+            send_sale_confirmation(customer["email"], customer["username"], sale_id,
+                                   vehicle_name, selling_price)
+        except Exception:
+            pass
+
+        fire_notif(
+            user_id=customer_id,
+            title="Sale Created",
+            message=f"Sale #{sale_id} has been created for {vehicle['brand']} {vehicle['model']}.",
+            channel="in_app",
+            ref_type="sales",
+            ref_id=sale_id
+        )
+
+        return jsonify({"message": "Sale created successfully.", "sale_id": sale_id}), 201
+
+    except Error as e:
+        conn.rollback()
+        return jsonify({"message": "Transaction failed.", "error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def sendEmailForInquiry(inquiry_id):
+    """
+    AGENT PORTAL
+
+    Send a custom email to the inquiry's customer, then auto-resolve
+    the inquiry. Accepts 'subject' and 'body' in the request JSON.
+    """
+    if not inquiry_id:
+        return jsonify({"message": "inquiry_id is required."}), 400
+
+    inquiry = run_query("""
+        SELECT * FROM inquiries
+        WHERE inquiry_id = %s AND agent_id = %s
+    """, (inquiry_id, session["user"]), fetch="one")
+
+    if not inquiry:
+        return jsonify({"message": "Inquiry not found or not assigned to you."}), 404
+
+    data = request.get_json(silent=True) or {}
+    subject = data.get("subject")
+    body = data.get("body")
+
+    if not subject or not body:
+        return jsonify({"message": "subject and body are required."}), 400
+
+    to_email = inquiry.get("guest_email")
+    if inquiry.get("user_id") and not to_email:
+        user = run_query("SELECT email FROM users WHERE user_id = %s",
+                         (inquiry["user_id"],), fetch="one")
+        to_email = user["email"] if user else None
+
+    if not to_email:
+        return jsonify({"message": "No customer email address available."}), 400
+
+    try:
+        send_custom_email(to_email, subject, body)
+    except Exception as e:
+        return jsonify({"message": "Failed to send email.", "error": str(e)}), 500
+
+    old_value = inquiry["status"]
+    now = datetime.now()
+    run_query("""
+        UPDATE inquiries SET status = 'resolved', resolved_at = %s
+        WHERE inquiry_id = %s
+    """, (now, inquiry_id))
+
+    audit_log(
+        session["user"],
+        "PUT",
+        "inquiries",
+        inquiry_id,
+        json.dumps(old_value, default=str),
+        json.dumps({"status": "resolved"}, default=str)
+    )
+
+    customer_name = inquiry.get("guest_name") or "Customer"
+    agent = run_query("SELECT username FROM users WHERE user_id = %s",
+                      (session["user"],), fetch="one")
+
+    if inquiry.get("user_id"):
+        fire_notif(
+            user_id=inquiry["user_id"],
+            title="Inquiry Resolved",
+            message=f"Your inquiry #{inquiry_id} has been resolved. Thank you!",
+            channel="in_app",
+            ref_type="inquiries",
+            ref_id=inquiry_id
+        )
+
+    return jsonify({"message": "Email sent and inquiry resolved."}), 200
+
 
 # admin
 def displayInquiries():
@@ -389,7 +741,9 @@ def displayInquiries():
                 i.message,
                 i.status,
                 i.agent_id,
-                i.inquiry_id
+                i.inquiry_id,
+                i.created_at,
+                agent_u.username AS agent_name
 
             FROM inquiries i
 
@@ -401,6 +755,9 @@ def displayInquiries():
             
             LEFT JOIN users u
                 ON i.user_id = u.user_id
+
+            LEFT JOIN users agent_u
+                ON i.agent_id = agent_u.user_id
 
             {search}
         """
@@ -432,7 +789,9 @@ def displayInquiries():
                 i.message,
                 i.status,
                 i.agent_id,
-                i.inquiry_id
+                i.inquiry_id,
+                i.created_at,
+                agent_u.username AS agent_name
 
             FROM inquiries i
 
@@ -444,6 +803,9 @@ def displayInquiries():
             
             LEFT JOIN users u
                 ON i.user_id = u.user_id
+
+            LEFT JOIN users agent_u
+                ON i.agent_id = agent_u.user_id
 
             WHERE i.status = 'open' OR (i.agent_id = %s AND i.status = 'assigned')
         """
@@ -473,7 +835,9 @@ def displayInquiries():
             "message": row["message"],
             "status": row["status"],
             "agent_assigned": row["agent_id"],
+            "agent_name": row["agent_name"],
             "user_type": user_type,
+            "created_at": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
             "contacts": {
                 "name": row["name"],
                 "email": row["email"],
@@ -545,7 +909,17 @@ def closeInquiry(inquiry_id):
             ref_type="inquiries",
             ref_id=inquiry_id
         )
-    
+
+    if res.get("agent_id"):
+        fire_notif(
+            user_id=res["agent_id"],
+            title="Inquiry Closed",
+            message=f"Inquiry #{inquiry_id} has been closed by admin.",
+            channel="in_app",
+            ref_type="inquiries",
+            ref_id=inquiry_id
+        )
+
     return jsonify({
         "message": "inquiry marked as 'closed'."
     }), 200

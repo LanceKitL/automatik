@@ -175,6 +175,16 @@ def send_password_reset_confirmation(email):
     msg.body = "Your password was successfully reset. If you did not do this, please contact support."
     mail.send(msg)
 
+def send_custom_email(to_email, subject, body):
+    """Send a plain-text email with an arbitrary subject and body."""
+    msg = Message(
+        sender=("AutoMatik", "AutoMatik@services.com"),
+        subject=subject,
+        recipients=[to_email]
+    )
+    msg.body = body
+    mail.send(msg)
+
 def send_new_inquiry_notification(customer_id, inquiry_id, vehicle_name, message):
     staff = run_query(
         "SELECT email FROM users WHERE role IN ('admin','agent') AND is_active = 1",
