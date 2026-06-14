@@ -14,7 +14,9 @@
 		}
 	});
 </script>
-
+<header>
+	<title>Customer Portal</title>
+</header>
 <div class="layout">
 	<Sidebar />
 	<div class="main-area">

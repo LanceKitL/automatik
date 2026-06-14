@@ -14,7 +14,7 @@ from controllers.salesController import (
     getEligibleSalesForLoan,
     listInsurance, getInsurance, addInsurance, updateInsurance,
 )
-from controllers.paymentsController import listPayments, getPayment, getPaymentSummary, recordPayment
+from controllers.paymentsController import listPayments, getPayment, getPaymentSummary, recordPayment, reviewPayment
 
 finance_staff_bp = Blueprint("finance_staff", __name__)
 
@@ -110,6 +110,16 @@ def index_payments():
 def show_payment(payment_id):
     """Get a single payment record."""
     return getPayment(payment_id)
+
+
+@finance_staff_bp.route("/payments/<int:payment_id>/review", methods=["PUT"])
+@logged_in_required
+@role_required("finance_staff")
+def review_customer_payment(payment_id):
+    """Approve or reject a customer-submitted payment (with screenshot).
+    Expects JSON: {"status": "verified"|"rejected", "note": "optional reason"}.
+    """
+    return reviewPayment(payment_id)
 
 
 @finance_staff_bp.route("/payments/summary")

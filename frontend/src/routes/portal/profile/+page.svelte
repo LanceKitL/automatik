@@ -1,16 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getPortalProfile, updatePortalProfile, changePassword } from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
 	import { User, Mail, Phone, MapPin, Lock, Save, Camera } from '@lucide/svelte';
 	import Loader from '$lib/components/Loader.svelte';
 
 	let loading = $state(true);
 	let saving = $state(false);
-	let saved = $state(false);
 	let form = $state({ name: '', email: '', phone: '', address: '' });
 	let passwords = $state({ current: '', new: '', confirm: '' });
-	let pwdError = $state('');
-	let pwdSuccess = $state('');
+	let changingPwd = $state(false);
 
 	onMount(async () => {
 		try {
@@ -30,34 +29,33 @@
 
 	async function saveProfile() {
 		saving = true;
-		saved = false;
 		try {
 			await updatePortalProfile({
 				full_name: form.name,
 				phone_number: form.phone,
 				address: form.address,
 			});
-			saved = true;
-			setTimeout(() => saved = false, 2000);
-		} catch {
-			// ignore
+			toast.success('Profile saved');
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Failed to save profile');
 		} finally {
 			saving = false;
 		}
 	}
 
 	async function handleChangePassword() {
-		pwdError = '';
-		pwdSuccess = '';
-		if (!passwords.current || !passwords.new) { pwdError = 'Fill in all fields.'; return; }
-		if (passwords.new.length < 6) { pwdError = 'New password must be at least 6 characters.'; return; }
-		if (passwords.new !== passwords.confirm) { pwdError = 'Passwords do not match.'; return; }
+		if (!passwords.current || !passwords.new) { toast.error('Fill in all fields.'); return; }
+		if (passwords.new.length < 6) { toast.error('New password must be at least 6 characters.'); return; }
+		if (passwords.new !== passwords.confirm) { toast.error('Passwords do not match.'); return; }
+		changingPwd = true;
 		try {
 			await changePassword(passwords.current, passwords.new, passwords.confirm);
-			pwdSuccess = 'Password changed successfully.';
+			toast.success('Password changed successfully.');
 			passwords = { current: '', new: '', confirm: '' };
-		} catch {
-			pwdError = 'Failed to change password. Check your current password.';
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Failed to change password.');
+		} finally {
+			changingPwd = false;
 		}
 	}
 </script>
@@ -112,7 +110,6 @@
 					<button class="btn-primary" onclick={saveProfile} disabled={saving}>
 						<Save size={16} /> {saving ? 'Saving…' : 'Save Changes'}
 					</button>
-					{#if saved}<span class="saved-msg">Changes saved!</span>{/if}
 				</div>
 			</div>
 		</div>
@@ -120,8 +117,6 @@
 		<div class="card form-card">
 			<div class="card-header"><h2><Lock size={16} /> Change Password</h2></div>
 			<div class="card-body">
-				{#if pwdError}<div class="alert-error">{pwdError}</div>{/if}
-				{#if pwdSuccess}<div class="alert-success">{pwdSuccess}</div>{/if}
 				<div class="form-row">
 					<div class="form-group">
 						<label>Current Password</label>
@@ -139,8 +134,8 @@
 					</div>
 				</div>
 				<div class="form-actions">
-					<button class="btn-primary" onclick={handleChangePassword}>
-						<Lock size={16} /> Change Password
+					<button class="btn-primary" onclick={handleChangePassword} disabled={changingPwd}>
+						<Lock size={16} /> {changingPwd ? 'Changing…' : 'Change Password'}
 					</button>
 				</div>
 			</div>

@@ -1,5 +1,28 @@
 from flask import jsonify, request
 from conn import run_query
+from datetime import datetime
+from werkzeug.utils import secure_filename
+import os
+
+
+UPLOAD_DIR = os.path.join("static", "uploads", "documents")
+
+
+def uploadDocumentFile():
+    if "file" not in request.files:
+        return jsonify({"message": "No file provided."}), 400
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"message": "Empty filename."}), 400
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "bin"
+    filename = f"{int(datetime.now().timestamp())}_{secure_filename(file.filename)}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    file.save(filepath)
+
+    file_url = f"/static/uploads/documents/{filename}"
+    return jsonify({"file_url": file_url}), 200
 
 
 def getAllDocuments():

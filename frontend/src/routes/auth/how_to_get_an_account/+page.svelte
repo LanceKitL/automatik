@@ -1,199 +1,211 @@
 <script lang="ts">
-    import logo from '$lib/assets/LOGO.png'
-    import {ArrowBigLeft} from '@lucide/svelte'
+	import logo from '$lib/assets/LOGO.png';
+	import left from '$lib/assets/AUTH/DESIGN.png';
+	import { ArrowLeft } from '@lucide/svelte';
 </script>
-<div class="contain">
-	<div class="column">
-		<div class="row-view">
-			<img
-				src={ArrowBigLeft}
-                alt="arrow"
-				class="image"
-			/>
-			<span class="text" >
-				back to login
-			</span>
-			<img
-				src={logo}
-                alt="logo"
-				class="image2"
-			/>
+<header>
+	<title>How to get an Account</title>
+</header>
+<div class="container">
+	<div class="left_side">
+		<div class="bg">
+			<img src={left} alt="background" class="img_bg" width="500">
 		</div>
-		<div class="box">
+	</div>
+
+	<div class="right_side">
+		<div class="r_container">
+			<div class="sec_1">
+				<div class="heading">
+					<img src={logo} alt="Logo" width="300">
+					<h1>How to Get an Account</h1>
+					<span class="subtitle">Access to this system is controlled by the company. Public self-registration is not available.</span>
+				</div>
+			</div>
+
+			<div class="sections">
+				<div class="section">
+					<h2>Customers</h2>
+					<p style="text-align: justify;">Customer accounts are created during the vehicle purchase process. When a customer purchases a vehicle, an authorized company representative (Administrator or Agent) creates the customer's account on their behalf. The customer will then receive a temporary password that can be used to log in to the system.</p>
+				</div>
+
+				<div class="section">
+					<h2>Company Staff</h2>
+					<p>The following accounts are managed internally by the company:</p>
+					<ul>
+						<li>Agent</li>
+						<li>Finance Staff</li>
+						<li>Service Staff</li>
+					</ul>
+					<p>These accounts cannot be self-registered. They are created by an Administrator based on the employee's role and responsibilities.</p>
+				</div>
+
+				<div class="section need-help">
+					<h2>Need an account?</h2>
+					<p>Customers should contact their sales representative or company office. Employees should contact their company administrator or supervisor for account access.</p>
+				</div>
+			</div>
+
+			<div class="back-link">
+				<a href="/auth/login">
+					<ArrowLeft size={14} />
+					Back to Login
+				</a>
+			</div>
 		</div>
-		<div class="column2">
-			<span class="text2" >
-				Access to this system is controlled by the company. Public self-registration is not available. Accounts are created and managed according to the user's role.
-			</span>
-			<div class="column3">
-				<span class="text3" >
-					How Customers Get Their Account
-				</span>
-				<span class="text4" >
-					Customer accounts are created during the vehicle purchase process.
-				</span>
-				<span class="text5" >
-					When a customer purchases a vehicle, an authorized company representative (Administrator or Agent) creates the customer's account on their behalf. The customer will then receive a temporary password that can be used to log in to the system.
-				</span>
-			</div>
-			<div class="column4">
-				<span class="text3" >
-					How Company Staff Get Their Account
-				</span>
-				<span class="text4" >
-					The following accounts are managed internally by the company:
-				</span>
-				<span class="text6" >
-					Agent\nFinance Staff\nService Staff
-				</span>
-				<span class="text5" >
-					These accounts cannot be self-registered. They are created by an Administrator based on the employee's role and responsibilities.
-				</span>
-			</div>
-		</div>
-		<button class="button"
-			onclick={() => alert('Pressed!')}>
-			<div class="column5">
-				<span class="text7" >
-					Need an account?
-				</span>
-				<span class="text8" >
-					Customers should contact their sales representative or company office. Employees should contact their company administrator or supervisor for account access.
-				</span>
-			</div>
-		</button>
 	</div>
 </div>
+
 <style>
-	.box {
-		max-width: 1400px;
-		height: 1px;
-		align-self: stretch;
-		background: #A1A1A1;
-		margin-bottom: 70px;
-		margin-left: auto;
-		margin-right: auto;
+	.container {
+		display: flex;
+		justify-content: space-around;
+		padding: 5rem 3rem;
 	}
-	.button {
-		max-width: 1400px;
-		align-self: stretch;
+
+	.left_side {
+		height: 100%;
+		width: 100%;
+		display: grid;
+		place-items: center;
+		padding-left: 8rem;
+
+		.img_bg {
+			border-radius: 20px;
+			width: 720px;
+			height: 750px;
+		}
+	}
+
+	.right_side {
+		height: 100%;
+		width: 100%;
+		padding-right: 7rem;
+
+		.r_container {
+			width: 460px;
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			padding-left: 4rem;
+			padding-top: 3rem;
+			gap: 1.5rem;
+		}
+	}
+
+	.heading {
 		display: flex;
 		flex-direction: column;
+		justify-content: center;
 		align-items: center;
-		background: #FFFDD633;
-		border-radius: 40px;
-		border: none;
-		padding-top: 49px;
-		padding-bottom: 49px;
-		margin-left: auto;
-		margin-right: auto;
-		text-align: left;
+		text-align: center;
+		gap: 0.5rem;
+
+		img {
+			margin-bottom: 0.5rem;
+		}
+
+		h1 {
+			font-size: 22px;
+			font-weight: 700;
+			color: #1a1a2e;
+			margin: 0;
+		}
+
+		.subtitle {
+			font-size: 13px;
+			color: #6b7280;
+			max-width: 360px;
+			line-height: 1.5;
+		}
 	}
-	.column {
-		align-self: stretch;
+
+	.sections {
 		display: flex;
 		flex-direction: column;
-		align-items: flex-start;
-		background: #FFFFFF;
-		padding-top: 84px;
-		padding-bottom: 84px;
-		box-shadow: 0px 4px 4px #00000040;
+		gap: 1.25rem;
 	}
-	.column2 {
-		max-width: 1354px;
-		align-self: stretch;
-		display: flex;
-		flex-direction: column;
-		margin-bottom: 124px;
-		margin-left: auto;
-		margin-right: auto;
+
+	.section {
+		h2 {
+			font-size: 15px;
+			font-weight: 700;
+			color: #1a1a2e;
+			margin: 0 0 6px 0;
+		}
+
+		p {
+			font-size: 13px;
+			color: #6b7280;
+			line-height: 1.6;
+			margin: 0 0 6px 0;
+		}
+
+		ul {
+			margin: 4px 0 10px 0;
+			padding-left: 1.25rem;
+
+			li {
+				font-size: 13px;
+				color: #374151;
+				line-height: 1.7;
+			}
+		}
+
+		&.need-help {
+			padding: 1rem 1rem;
+			border-radius: 1rem;
+			background-color: rgb(255, 255, 194);
+			margin-top: auto;
+			padding-top: 0.75rem;
+
+			h2 {
+				color: #71733f;
+			}
+
+			p {
+				color: #71733f;
+			}
+		}
 	}
-	.column3 {
-		align-self: stretch;
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		margin-bottom: 143px;
+
+	.back-link {
+		margin-top: 0.5rem;
+
+		a {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			font-size: 13px;
+			color: #0d76ff;
+			text-decoration: none;
+			font-weight: 500;
+
+			&:hover {
+				text-decoration: underline;
+			}
+		}
 	}
-	.column4 {
-		align-self: stretch;
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		margin-right: 27px;
-	}
-	.column5 {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		padding-right: 12px;
-		gap: 22px;
-	}
-	.contain {
-		display: flex;
-		flex-direction: column;
-		background: #FFFFFF;
-	}
-	.image {
-		width: 47px;
-		height: 47px;
-		margin-right: 4px;
-		object-fit: fill;
-	}
-	.image2 {
-		width: 567px;
-		height: 173px;
-		margin-top: 38px;
-		object-fit: fill;
-	}
-	.row-view {
-		display: flex;
-		align-items: flex-start;
-		margin-bottom: 53px;
-		margin-left: 79px;
-	}
-	.text {
-		color: #2364C5;
-		font-size: 22px;
-		font-weight: bold;
-		margin-top: 9px;
-		margin-right: 405px;
-	}
-	.text2 {
-		color: #000000;
-		font-size: 30px;
-		margin-bottom: 134px;
-	}
-	.text3 {
-		color: #000000;
-		font-size: 48px;
-		font-weight: bold;
-		margin-bottom: 23px;
-	}
-	.text4 {
-		color: #7F7F7F;
-		font-size: 30px;
-		margin-bottom: 33px;
-	}
-	.text5 {
-		color: #000000;
-		font-size: 30px;
-	}
-	.text6 {
-		color: #000000;
-		font-size: 30px;
-		margin-bottom: 33px;
-		width: 214px;
-	}
-	.text7 {
-		color: #BABC72;
-		font-size: 48px;
-		font-weight: bold;
-		margin-right: 760px;
-	}
-	.text8 {
-		color: #BABC72;
-		font-size: 30px;
-		width: 1172px;
+
+	@media (max-width: 1100px) {
+		.container {
+			padding: 3rem 1.5rem;
+		}
+
+		.left_side {
+			display: none;
+		}
+
+		.right_side {
+			padding-right: 0;
+			display: flex;
+			justify-content: center;
+
+			.r_container {
+				padding-left: 0;
+				width: 100%;
+				max-width: 460px;
+			}
+		}
 	}
 </style>

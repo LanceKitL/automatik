@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import {
 		getSales,
@@ -76,7 +77,8 @@
 			const res = await getSales();
 			sales = res.data ?? [];
 		} catch (e) {
-			error = (e as Error).message;
+			toast.error((e as Error).message || 'Failed to load sales.');
+			error = null;
 		} finally {
 			loading = false;
 		}
@@ -89,7 +91,10 @@
 	<!-- Top bar -->
 	<div class="top-bar">
 		<div class="title-row">
-			<h1>Sales Management</h1>
+			<div>
+				<h1>Sales Management</h1>
+				<p class="title-subtitle">Manage vehicle sales and contracts</p>
+			</div>
 		</div>
 		<div class="toolbar">
 			<div class="search-wrap">
@@ -207,11 +212,12 @@
 	/* Top bar */
 	.top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; flex-wrap: wrap; gap: 10px; }
 	.title-row { display: flex; align-items: center; gap: 10px; }
+	.title-subtitle { font-size: 13px; color: #9ca3af; margin: 2px 0 0; font-weight: 400; }
 	.logo-badge { width: 36px; height: 36px; background: #1a1a2e; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 700; color: #e8c97e; flex-shrink: 0; }
 	h1 { font-size: 20px; font-weight: 700; color: #1a1a2e; letter-spacing: -0.5px; margin: 0; }
 	.toolbar { display: flex; align-items: center; gap: 10px; }
 	.search-wrap { position: relative; }
-	.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none; }
+	.search-wrap :global(.search-icon) { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none; }
 	.search-input { height: 34px; padding: 0 12px 0 32px; border: 0.5px solid #e5e7eb; border-radius: 8px; font-family: 'Syne', sans-serif; font-size: 12px; color: #1a1a2e; background: #f9fafb; outline: none; width: 200px; }
 	.search-input:focus { border-color: #7c9df7; background: #fff; }
 	.create-btn { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; background: #1a1a2e; color: #e8c97e; border: none; border-radius: 8px; font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: 0.2px; transition: opacity .15s; }

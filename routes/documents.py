@@ -4,6 +4,7 @@ from controllers.documentsController import (
     getAllDocuments,
     getDocumentById,
     uploadDocument,
+    uploadDocumentFile,
     updateDocument,
     deleteDocument,
 )
@@ -21,6 +22,12 @@ def get_all_documents(): return getAllDocuments()
 @logged_in_required
 @role_required("admin")
 def get_document(document_id): return getDocumentById(document_id)
+
+# POST /admin/documents/upload
+@documents_bp.route("/admin/documents/upload", methods=["POST"])
+@logged_in_required
+@role_required("admin")
+def upload_document_file(): return uploadDocumentFile()
 
 # POST /admin/documents/sales/<sale_id>
 @documents_bp.route("/admin/sales/<int:sale_id>/documents", methods=["POST"])

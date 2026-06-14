@@ -1,0 +1,15 @@
+{% extends "email/_base.html" %}
+{% block content %}
+<tr><td class="body">
+  <h2>Reservation Fee Required</h2>
+  <p>Hi {{ name }},</p>
+  <p>Thank you for reserving the <strong>{{ vehicle_name }}</strong>. To confirm your reservation, please settle the reservation fee below.</p>
+  <table class="details" cellpadding="0" cellspacing="0">
+    <tr><td class="lbl">Vehicle</td><td class="val">{{ vehicle_name }}</td></tr>
+    <tr><td class="lbl">Reservation Fee</td><td class="val">PHP {{ "{:,.2f}".format(amount) if amount is number else amount }}</td></tr>
+  </table>
+  <p>You may pay this fee online through the portal or at the dealership. Once confirmed, the vehicle will be held for you.</p>
+  <p class="note">This reservation fee is refundable if you cancel. It can also be applied as a deduction to the total selling price.</p>
+  <p>Thank you for choosing AutoMatik!</p>
+</td></tr>
+{% endblock %}

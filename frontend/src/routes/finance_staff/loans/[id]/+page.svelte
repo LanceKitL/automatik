@@ -6,21 +6,32 @@
 		getFinanceLoan,
 		updateFinanceLoanStatus,
 		updateAmortizationStatus,
+		reviewPayment,
 		getFinanceInsurance,
 		type LoanItem,
-		type ScheduleItem
+		type ScheduleItem,
+		resolvePhotoUrl
 	} from '$lib/services/api';
 	import DataTable from '$lib/components/DataTable.svelte';
-	import { ArrowLeft, Shield, Plus } from '@lucide/svelte';
+	import { toast } from 'svelte-sonner';
+	import { ArrowLeft, Shield, Plus, Check, Ban, X } from '@lucide/svelte';
 
 	let loanId = $derived(Number($page.params.id));
 	let loan = $state<(LoanItem & { amortization_schedule: ScheduleItem[] }) | null>(null);
 	let schedule = $state<ScheduleItem[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
-	let message = $state('');
 	let actionLoading = $state(false);
 	let insuranceRecords = $state<Record<string, unknown>[]>([]);
+
+	let showReviewModal = $state(false);
+	let reviewPaymentId = $state<number | null>(null);
+	let reviewScheduleId = $state<number | null>(null);
+	let reviewAction = $state<'verified' | 'rejected'>('verified');
+	let reviewNote = $state('');
+	let reviewing = $state(false);
+
+	let previewUrl = $state<string | null>(null);
 
 	onMount(async () => {
 		try {
@@ -39,15 +50,14 @@
 	async function handleStatus(status: 'approved' | 'rejected') {
 		if (!confirm(`Mark this loan as ${status}?`)) return;
 		actionLoading = true;
-		message = '';
 		try {
 			await updateFinanceLoanStatus(loanId, status);
-			message = `Loan #${loanId} ${status}.`;
+			toast.success(`Loan #${loanId} ${status}.`);
 			const res = await getFinanceLoan(loanId);
 			loan = res.data as LoanItem & { amortization_schedule: ScheduleItem[] };
 			schedule = loan?.amortization_schedule ?? [];
 		} catch (e: unknown) {
-			message = e instanceof Error ? e.message : 'Error.';
+			toast.error(e instanceof Error ? e.message : 'Error updating loan status.');
 		} finally {
 			actionLoading = false;
 		}
@@ -55,15 +65,43 @@
 
 	async function handleMarkPaid(scheduleId: number) {
 		if (!confirm('Mark this amortization entry as paid?')) return;
-		message = '';
 		try {
 			await updateAmortizationStatus(scheduleId, 'paid');
-			message = `Entry #${scheduleId} marked as paid.`;
+			toast.success(`Entry #${scheduleId} marked as paid.`);
 			const res = await getFinanceLoan(loanId);
 			loan = res.data as LoanItem & { amortization_schedule: ScheduleItem[] };
 			schedule = loan?.amortization_schedule ?? [];
 		} catch (e: unknown) {
-			message = e instanceof Error ? e.message : 'Error.';
+			toast.error(e instanceof Error ? e.message : 'Error marking as paid.');
+		}
+	}
+
+	function openReview(entry: ScheduleItem, action: 'verified' | 'rejected') {
+		reviewPaymentId = entry.payment_id ?? null;
+		reviewScheduleId = entry.schedule_id;
+		reviewAction = action;
+		reviewNote = '';
+		showReviewModal = true;
+	}
+
+	async function handleReviewSubmit() {
+		if (!reviewPaymentId) return;
+		if (reviewAction === 'rejected' && !reviewNote.trim()) {
+			toast.error('A rejection reason is required.');
+			return;
+		}
+		reviewing = true;
+		try {
+			await reviewPayment(reviewPaymentId, reviewAction, reviewNote || undefined);
+			showReviewModal = false;
+			toast.success(`Payment for schedule #${reviewScheduleId} ${reviewAction}.`);
+			const res = await getFinanceLoan(loanId);
+			loan = res.data as LoanItem & { amortization_schedule: ScheduleItem[] };
+			schedule = loan?.amortization_schedule ?? [];
+		} catch (e: unknown) {
+			toast.error(e instanceof Error ? e.message : 'Review failed.');
+		} finally {
+			reviewing = false;
 		}
 	}
 
@@ -78,10 +116,6 @@
 	<a href="/finance_staff/loans" class="back-link" onclick={(e) => { e.preventDefault(); goto('/finance_staff/loans'); }}>
 		<ArrowLeft size={14} /> Back to Loans
 	</a>
-
-	{#if message}
-		<div class="msg">{message}</div>
-	{/if}
 
 	{#if loading}
 		<div class="loading-state">
@@ -166,7 +200,7 @@
 		<section class="schedule-section">
 			<h2>Amortization Schedule</h2>
 			{#if schedule.length > 0}
-				<DataTable columns={['#', 'Due Date', 'Principal', 'Interest', 'Total Due', 'Running Balance', 'Status', 'Proof', 'Actions']}>
+				<DataTable columns={['#', 'Due Date', 'Principal', 'Interest', 'Total Due', 'Running Balance', 'Status', 'Review', 'Proof', 'Actions']}>
 					{#each schedule as entry (entry.schedule_id)}
 						<tr>
 							<td class="cell-mono">{entry.month_number}</td>
@@ -179,14 +213,30 @@
 								<span class="badge badge-{entry.status}">{entry.status}</span>
 							</td>
 							<td>
-								{#if entry.status === 'paid' && entry.proof_of_payment}
-									<a href={entry.proof_of_payment} target="_blank" rel="noopener" class="proof-link">View</a>
+								{#if entry.review_status === 'pending_verification'}
+									<span class="review-badge rb-pending">Pending Review</span>
+								{:else if entry.review_status === 'verified'}
+									<span class="review-badge rb-verified">Verified</span>
+								{:else if entry.review_status === 'rejected'}
+									<span class="review-badge rb-rejected">Rejected</span>
 								{:else}
 									<span class="muted">—</span>
 								{/if}
 							</td>
 							<td>
-								{#if entry.status === 'unpaid'}
+								{#if entry.proof_of_payment}
+									<button onclick={() => previewUrl = entry.proof_of_payment!} class="proof-btn">View</button>
+								{:else}
+									<span class="muted">—</span>
+								{/if}
+							</td>
+							<td>
+								{#if entry.review_status === 'pending_verification'}
+									<div class="review-actions">
+										<button class="btn-approve-sm" onclick={() => openReview(entry, 'verified')} title="Approve"><Check size={12} /></button>
+										<button class="btn-reject-sm" onclick={() => openReview(entry, 'rejected')} title="Reject"><Ban size={12} /></button>
+									</div>
+								{:else if entry.status === 'unpaid' && !entry.review_status}
 									<button class="btn-paid" onclick={() => handleMarkPaid(entry.schedule_id)}>Mark Paid</button>
 								{/if}
 							</td>
@@ -197,8 +247,48 @@
 				<p class="empty">No schedule entries yet.</p>
 			{/if}
 		</section>
+
+		<!-- Review Modal -->
+		{#if showReviewModal && reviewPaymentId}
+			<div class="modal-overlay" onclick={() => showReviewModal = false}>
+				<div class="modal" onclick={(e) => e.stopPropagation()}>
+					<div class="modal-header">
+						<h3>{reviewAction === 'verified' ? 'Approve' : 'Reject'} Payment</h3>
+						<button class="close-btn" onclick={() => showReviewModal = false}><X size={16} /></button>
+					</div>
+					<div class="modal-body">
+						<p style="margin:0 0 8px; font-size:13px;">Payment for schedule #{reviewScheduleId}</p>
+						<div class="form-group">
+							<label>Note {reviewAction === 'rejected' ? '(required)' : '(optional)'}</label>
+							<textarea class="review-note" bind:value={reviewNote} placeholder={reviewAction === 'rejected' ? 'Reason for rejection…' : 'Optional note…'}></textarea>
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button class="btn-cancel" onclick={() => showReviewModal = false} disabled={reviewing}>Cancel</button>
+						<button
+							class={reviewAction === 'verified' ? 'btn-approve-sm' : 'btn-reject-sm'}
+							onclick={handleReviewSubmit}
+							disabled={reviewing}
+							style="padding:6px 14px; font-size:12px; font-weight:600; border:none; border-radius:6px; cursor:pointer; {reviewAction === 'verified' ? 'background:#16a34a; color:#fff;' : 'background:#dc2626; color:#fff;'}"
+						>
+							{reviewing ? 'Processing…' : reviewAction === 'verified' ? 'Approve' : 'Reject'}
+						</button>
+					</div>
+				</div>
+			</div>
+		{/if}
 	{/if}
 </div>
+
+<!-- Image Preview Modal -->
+{#if previewUrl}
+	<div class="modal-overlay" onclick={() => previewUrl = null}>
+		<div class="preview-modal" onclick={(e) => e.stopPropagation()}>
+			<button class="preview-close" onclick={() => previewUrl = null}><X size={20} /></button>
+			<img src={resolvePhotoUrl(previewUrl)} alt="Payment screenshot" class="preview-img" />
+		</div>
+	</div>
+{/if}
 
 <style>
 	.page { font-family: var(--font-sans); padding: 2rem 1.5rem; max-width: 1200px; margin: 0 auto; }
@@ -207,8 +297,6 @@
 	.back-link:hover { text-decoration: underline; }
 
 	h1 { font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 0 0 1.25rem; }
-
-	.msg { padding: 0.5rem 0.75rem; background: #ecfdf5; color: #059669; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 1rem; }
 
 	.loading-state { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 3rem; color: var(--text-muted); font-size: 13px; }
 	.spinner { width: 24px; height: 24px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; }
@@ -273,11 +361,45 @@
 	.cell-mono { font-family: var(--font-mono); font-size: 11px; color: var(--text-primary); }
 	.proof-link { color: var(--primary); font-weight: 600; text-decoration: none; font-size: 11px; }
 	.proof-link:hover { text-decoration: underline; }
+	.proof-btn { background:var(--primary-bg); color:var(--primary); border:1px solid var(--primary); border-radius:var(--radius-sm); padding:2px 8px; font-size:11px; font-weight:600; cursor:pointer; }
+	.proof-btn:hover { background:var(--primary); color:var(--text-white); }
 	.muted { color: var(--text-muted); font-size: 11px; }
+
+	.preview-modal { position:relative; max-width:90vw; max-height:90vh; display:flex; align-items:center; justify-content:center; }
+	.preview-img { max-width:100%; max-height:90vh; border-radius:8px; box-shadow:0 20px 60px rgba(0,0,0,0.3); }
+	.preview-close { position:absolute; top:-40px; right:0; background:rgba(0,0,0,0.5); color:#fff; border:none; border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+	.preview-close:hover { background:rgba(0,0,0,0.7); }
 	.btn-paid { padding: 3px 10px; border: none; border-radius: var(--radius-sm); background: var(--success); color: var(--text-white); font-family: var(--font-sans); font-size: 10px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
 	.btn-paid:hover { opacity: 0.85; }
 
 	.empty { color: var(--text-muted); font-style: italic; font-size: 13px; }
+
+	.review-badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600; }
+	.rb-pending { background:#fef3c7; color:#92400e; }
+	.rb-verified { background:#d1fae5; color:#065f46; }
+	.rb-rejected { background:#fef2f2; color:#dc2626; }
+
+	.review-actions { display:flex; gap:4px; }
+	.btn-approve-sm, .btn-reject-sm { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border:none; border-radius:4px; cursor:pointer; }
+	.btn-approve-sm { background:#d1fae5; color:#065f46; }
+	.btn-approve-sm:hover { background:#a7f3d0; }
+	.btn-reject-sm { background:#fef2f2; color:#dc2626; }
+	.btn-reject-sm:hover { background:#fecaca; }
+
+	.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:1000; padding:1rem; }
+	.modal { background:var(--bg-card); border-radius:12px; width:100%; max-width:420px; box-shadow:0 20px 60px rgba(0,0,0,0.15); overflow:hidden; }
+	.modal-header { display:flex; align-items:center; justify-content:space-between; padding:1rem 1.25rem; border-bottom:1px solid var(--border); }
+	.modal-header h3 { font-size:15px; font-weight:700; margin:0; }
+	.close-btn { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border:none; border-radius:6px; background:transparent; color:var(--text-muted); cursor:pointer; }
+	.close-btn:hover { background:var(--bg-hover); }
+	.modal-body { padding:1.25rem; }
+	.modal-footer { display:flex; justify-content:flex-end; gap:8px; padding:1rem 1.25rem; border-top:1px solid var(--border); }
+	.form-group { display:flex; flex-direction:column; gap:4px; }
+	.form-group label { font-size:11px; font-weight:600; color:var(--text-light); }
+	.review-note { width:100%; min-height:60px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-family:var(--font-sans); font-size:12px; resize:vertical; }
+	.review-note:focus { border-color:var(--primary); outline:none; }
+	.btn-cancel { height:34px; padding:0 16px; border:1px solid var(--border); border-radius:8px; background:var(--bg-card); font-family:inherit; font-size:12px; color:var(--text-light); cursor:pointer; }
+	.btn-cancel:disabled { opacity:0.5; cursor:default; }
 
 	@media (max-width: 768px) {
 		.cards-grid { grid-template-columns: 1fr; }

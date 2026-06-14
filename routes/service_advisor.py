@@ -38,7 +38,7 @@ def dashboard():
 
 @service_advisor_bp.route("/bookings")
 @logged_in_required
-@role_required("service_advisor")
+@role_required("service_advisor", "service_staff")
 def index_bookings():
     """List all service bookings with assigned_to info."""
     return listAllBookingsHandler()
@@ -46,7 +46,7 @@ def index_bookings():
 
 @service_advisor_bp.route("/bookings/mine")
 @logged_in_required
-@role_required("service_advisor")
+@role_required("service_advisor", "service_staff")
 def my_bookings():
     """List bookings assigned to the current advisor."""
     return getMyBookingsHandler()
@@ -54,7 +54,7 @@ def my_bookings():
 
 @service_advisor_bp.route("/bookings/<int:booking_id>/assign", methods=["PUT"])
 @logged_in_required
-@role_required("service_advisor")
+@role_required("service_advisor", "service_staff")
 def assign_self(booking_id):
     """Self-assign a booking to the current advisor."""
     return assignToSelfHandler(booking_id)
@@ -62,7 +62,7 @@ def assign_self(booking_id):
 
 @service_advisor_bp.route("/bookings/<int:booking_id>/status", methods=["PUT"])
 @logged_in_required
-@role_required("service_advisor")
+@role_required("service_advisor", "service_staff")
 def update_booking_status(booking_id):
     """Update booking status (confirmed / completed / cancelled). Pass ?status= in body."""
     from flask import request
@@ -76,7 +76,7 @@ def update_booking_status(booking_id):
 
 @service_advisor_bp.route("/bookings/<int:booking_id>/notes", methods=["PUT"])
 @logged_in_required
-@role_required("service_advisor")
+@role_required("service_advisor", "service_staff")
 def update_notes(booking_id):
     """Update technician notes for a booking."""
     return updateTechnicianNotesHandler(booking_id)
@@ -87,7 +87,7 @@ def update_notes(booking_id):
 
 @service_advisor_bp.route("/bookings/<int:booking_id>/assign-intake", methods=["PUT"])
 @logged_in_required
-@role_required("service_advisor")
+@role_required("service_advisor", "service_staff")
 def assign_intake(booking_id):
     """Self-assign a booking and open intake (status → draft_estimate)."""
     return assignAndOpenIntakeHandler(booking_id)
@@ -95,7 +95,7 @@ def assign_intake(booking_id):
 
 @service_advisor_bp.route("/bookings/<int:booking_id>/estimate", methods=["PUT"])
 @logged_in_required
-@role_required("service_advisor")
+@role_required("service_advisor", "service_staff")
 def save_estimate(booking_id):
     """Save or update the estimate_data for a booking."""
     return createEstimateHandler(booking_id)
@@ -103,7 +103,7 @@ def save_estimate(booking_id):
 
 @service_advisor_bp.route("/bookings/<int:booking_id>/transmit", methods=["PUT"])
 @logged_in_required
-@role_required("service_advisor")
+@role_required("service_advisor", "service_staff")
 def transmit_estimate(booking_id):
     """Lock estimate and set status to awaiting_signature."""
     return transmitEstimateHandler(booking_id)
@@ -111,7 +111,7 @@ def transmit_estimate(booking_id):
 
 @service_advisor_bp.route("/bookings/<int:booking_id>/sign", methods=["PUT"])
 @logged_in_required
-@role_required("service_advisor")
+@role_required("service_advisor", "service_staff")
 def sign_estimate(booking_id):
     """Sign the estimate (status → in_progress)."""
     return signEstimateHandler(booking_id)
@@ -122,7 +122,7 @@ def sign_estimate(booking_id):
 
 @service_advisor_bp.route("/warranty")
 @logged_in_required
-@role_required("service_advisor")
+@role_required("service_advisor", "service_staff")
 def index_warranty():
     """List all warranty claims."""
     return listAllWarrantyClaimsHandler()
@@ -130,7 +130,7 @@ def index_warranty():
 
 @service_advisor_bp.route("/warranty/<int:claim_id>")
 @logged_in_required
-@role_required("service_advisor")
+@role_required("service_advisor", "service_staff")
 def show_warranty(claim_id):
     """Get warranty claim detail with linked service bookings."""
     return getWarrantyClaimDetailHandler(claim_id)

@@ -30,7 +30,9 @@
 		}
 	}
 </script>
-
+<header>
+	<title>Forgot Password</title>
+</header>
 <div class="container">
 	<div class="left_side">
 		<div class="bg">
@@ -99,7 +101,7 @@
 .container {
 	display: flex;
 	justify-content: space-around;
-	padding: 3rem;
+	padding: 5rem 3rem;
 
 	.left_side {
 		height: 100%;
@@ -125,7 +127,7 @@
 			flex-direction: column;
 			justify-content: center;
 			align-items: center;
-			padding-left: 10rem;
+			padding-left: 4rem;
 			padding-top: 5rem;
 			gap: 2rem;
 

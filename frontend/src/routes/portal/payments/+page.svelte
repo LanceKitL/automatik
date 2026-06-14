@@ -1,19 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getMyPayments, uploadPaymentProof } from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
 	import { CreditCard, Wallet, Calendar, AlertTriangle, Upload, Eye } from '@lucide/svelte';
 
 	let payments = $state<Record<string, unknown>[]>([]);
 	let loading = $state(true);
 	let uploadingId = $state<number | null>(null);
-	let uploadError = $state('');
 
 	onMount(async () => {
 		try {
 			const res = await getMyPayments();
 			payments = res.data as Record<string, unknown>[];
 		} catch {
-			// ignore
+			toast.error('Failed to load payments.');
 		} finally {
 			loading = false;
 		}
@@ -33,13 +33,13 @@
 			const file = input.files?.[0];
 			if (!file) return;
 			uploadingId = paymentId;
-			uploadError = '';
 			try {
 				const res = await uploadPaymentProof(paymentId, file);
 				const p = payments.find((p: any) => p.payment_id === paymentId);
 				if (p) p.proof_of_payment = res.proof_of_payment;
+				toast.success('Proof of payment uploaded');
 			} catch (e: unknown) {
-				uploadError = e instanceof Error ? e.message : 'Upload failed.';
+				toast.error(e instanceof Error ? e.message : 'Upload failed.');
 			} finally {
 				uploadingId = null;
 			}
@@ -52,10 +52,6 @@
 	<h1>Payment History</h1>
 	<p class="subtitle">View and manage your payment records.</p>
 </div>
-
-{#if uploadError}
-	<div class="alert-error"><AlertTriangle size={16} /> {uploadError}</div>
-{/if}
 
 <div class="metrics">
 	<div class="metric-card">

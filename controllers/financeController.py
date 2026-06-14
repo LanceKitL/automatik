@@ -57,13 +57,19 @@ def getFinanceDashboard():
         (overdue_30d_accounts["count"] / total_active) * 100, 1
     )
 
-    # 5. Total Collected
+    # 5. Pending Payments — payments awaiting verification
+    pending_payments = run_query(
+        "SELECT COUNT(*) AS count FROM payments WHERE review_status = 'pending_verification'",
+        fetch="one",
+    )
+
+    # 6. Total Collected
     total_collected = run_query(
         "SELECT COALESCE(SUM(amount_paid), 0) AS total FROM payments",
         fetch="one",
     )
 
-    # 6. Recent Payments
+    # 7. Recent Payments
     recent_payments = run_query(
         """SELECT p.payment_id, p.amount_paid, p.payment_method, p.payment_date,
                   s.sale_id, v.brand, v.model, u.username AS customer_name
@@ -81,6 +87,7 @@ def getFinanceDashboard():
             "approved_contracting": approved_contracting["count"],
             "total_financed_portfolio": total_financed_portfolio["total"],
             "delinquency_rate": delinquency_rate,
+            "pending_payments": pending_payments["count"],
             "total_collected": total_collected["total"],
             "recent_payments": recent_payments,
         }

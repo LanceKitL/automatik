@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import {
-		getEligibleSalesForLoan,
+	import { getEligibleSalesForLoan,
 		createFinanceLoan,
 		type EligibleSaleItem
 	} from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
 	import { X } from '@lucide/svelte';
 
 	let { show, onClose }: { show: boolean; onClose: () => void } = $props();
@@ -103,6 +103,7 @@
 				term_months: termMonths!,
 				down_payment: downPayment
 			});
+			toast.success('Loan created successfully.');
 			onClose();
 		} catch (e) {
 			error = (e as Error).message;

@@ -1,0 +1,24 @@
+{% extends "email/_base.html" %}
+{% block content %}
+<tr><td class="body">
+  <h2>Test Drive Booking Confirmed</h2>
+  <p>Hi {{ name }},</p>
+  <p>Your test drive for the <strong>{{ vehicle_name }}</strong> has been confirmed.</p>
+  <table class="details" cellpadding="0" cellspacing="0">
+    <tr><td class="lbl">Booking ID</td><td class="val">#{{ booking_id }}</td></tr>
+    <tr><td class="lbl">Date &amp; Time</td><td class="val">{{ date_time }}</td></tr>
+    <tr><td class="lbl">Location</td><td class="val">{{ location }}</td></tr>
+  </table>
+  <div class="info-box">
+    <strong>Test Drive Policy:</strong>
+    <ul style="margin:6px 0 0;padding-left:18px;">
+      <li>A valid Driver's Licence is required.</li>
+      <li>You must be at least 18 years old.</li>
+      <li>Test drive is limited to the designated route around the dealership.</li>
+      <li>A dealership representative will accompany you during the test drive.</li>
+      <li>The customer is responsible for any traffic violations incurred during the test drive.</li>
+    </ul>
+  </div>
+  <p>Thank you for choosing AutoMatik!</p>
+</td></tr>
+{% endblock %}

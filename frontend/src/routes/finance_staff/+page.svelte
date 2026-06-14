@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { getFinanceDashboard } from '$lib/services/api';
   import type { FinanceDashboardResponse } from '$lib/services/api';
+  import { toast } from 'svelte-sonner';
   import { goto } from '$app/navigation';
   import Chart from 'chart.js/auto';
 
@@ -97,7 +98,9 @@
     try {
       const res = await getFinanceDashboard();
       data = res.data;
-    } catch { /* offline */ }
+    } catch {
+      toast.error('Failed to load dashboard data.');
+    }
     finally { loading = false; }
 
     await tick();
@@ -131,6 +134,17 @@
         <div class="sc-sub">
           <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           Click to process
+        </div>
+      </div>
+
+      <!-- Pending payments — clickable -->
+      <div class="sc s1 clickable" onclick={() => goto('/finance_staff/payments')} role="button" tabindex="0">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="sc-icon" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+        <div class="sc-val">{data.pending_payments}</div>
+        <div class="sc-lbl">Pending Payments</div>
+        <div class="sc-sub">
+          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          Verify now
         </div>
       </div>
 
@@ -296,7 +310,7 @@
   .spinner { width: 24px; height: 24px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; }
 
   /* Stat cards */
-  .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 1.1rem; }
+  .stats-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 1.1rem; }
   .sc { background: var(--bg-stat); border-radius: 12px; padding: .85rem 1rem; position: relative; overflow: hidden; transition: transform .18s; }
   .sc.clickable { cursor: pointer; }
   .sc:hover { transform: translateY(-2px); }

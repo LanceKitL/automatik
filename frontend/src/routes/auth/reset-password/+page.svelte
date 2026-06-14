@@ -100,16 +100,16 @@
 		cursor: pointer;
 	}
 	.error {
-		color: var(--danger);
-		background: var(--danger-bg);
+		color: #c00;
+		background: #fee;
 		padding: 0.5rem;
-		border-radius: var(--radius-sm);
+		border-radius: 4px;
 	}
 	.success {
-		color: var(--success-text);
-		background: var(--success-bg);
+		color: #080;
+		background: #efe;
 		padding: 0.5rem;
-		border-radius: var(--radius-sm);
+		border-radius: 4px;
 	}
 	h1 {
 		text-align: center;

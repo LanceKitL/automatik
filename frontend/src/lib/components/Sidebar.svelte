@@ -16,7 +16,6 @@
 		FileText,
 		Bell,
 		ClipboardList,
-		LucideWrench,
 		Settings,
 		ClipboardCheck,
 		Calculator,
@@ -51,7 +50,6 @@
 					{ label: 'Inventory', href: '/admin/vehicles', icon: Package },
 					{ label: 'Inquiries', href: '/admin/inquiries', icon: MessageCircle },
 					{ label: 'Sales', href: '/admin/sales', icon: ShoppingCart },
-					{ label: 'Loans', href: '/admin/loans', icon: Landmark },
 					{ label: 'Payments', href: '/admin/payments', icon: CreditCard },
 					{ label: 'Commissions', href: '/admin/commissions', icon: DollarSign },
 					{ label: 'Service Bookings', href: '/admin/service/bookings', icon: Wrench },
@@ -59,12 +57,14 @@
 					{ label: 'Documents', href: '/admin/service/documents', icon: FileText },
 					{ label: 'Notifications', href: '/admin/notifications', icon: Bell },
 					{ label: 'Audit Logs', href: '/admin/audit_logs', icon: ClipboardList },
-					{ label: 'Settings', href: '/admin/settings', icon: Settings }
+					{ label: 'System Settings', href: '/admin/settings', icon: Settings }
 				]
-			: role === 'agent'
-				? [
+: role === 'agent'
+			? [
 						{ label: 'Dashboard', href: '/agent', icon: LayoutDashboard },
+						{ label: 'Create Inquiry', href: '/agent/vehicles', icon: CarIcon },
 						{ label: 'Inquiries', href: '/agent/inquiries', icon: MessageCircle },
+						{ label: 'Test Drives', href: '/agent/test-drives', icon: CarFront },
 						{ label: 'Tasks', href: '/agent/tasks', icon: ClipboardCheck },
 						{ label: 'Sales', href: '/agent/sales', icon: DollarSign }
 					]
@@ -73,12 +73,12 @@
 							{ label: 'Dashboard', href: '/portal', icon: LayoutDashboard },
 							{ label: 'My Vehicles', href: '/portal/my-vehicles', icon: Car },
 							{ label: 'Browse Vehicles', href: '/portal/vehicles', icon: CarIcon },
-							{ label: 'Payments', href: '/portal/payments', icon: CreditCard },
+							{ label: 'Payments History', href: '/portal/payments', icon: CreditCard },
 							{ label: 'Amortization', href: '/portal/amortization', icon: Calculator },
 							{ label: 'Inquiries', href: '/portal/inquiries', icon: MessageSquareText },
 							{ label: 'Documents', href: '/portal/documents', icon: FolderKanban },
-							{ label: 'Appointments', href: '/portal/appointments', icon: CalendarCheck },
-							{ label: 'Service Bookings', href: '/portal/service', icon: Wrench },
+							{ label: 'Test Drives', href: '/portal/appointments', icon: CalendarCheck },
+							{ label: 'Service Appointments', href: '/portal/service', icon: Wrench },
 							{ label: 'Warranty', href: '/portal/warranty', icon: LifeBuoy },
 							{ label: 'Notifications', href: '/portal/notifications', icon: Bell },
 							{ label: 'Profile', href: '/portal/profile', icon: User }
@@ -91,13 +91,13 @@
 								{ label: 'Overdue Payments', href: '/finance_staff/amortization', icon: Calculator },
 								{ label: 'Insurance', href: '/finance_staff/insurance', icon: Shield }
 							]
-						: role === 'service_advisor'
+						: role === 'service_staff' || role === 'service_advisor'
 							? [
-									{ label: 'Dashboard', href: '/service_advisor', icon: LayoutDashboard },
-									{ label: 'Maintenance', href: '/service_advisor/maintenance', icon: Warehouse },
-									{ label: 'Repairs', href: '/service_advisor/repairs', icon: Wrench },
-									{ label: 'Warranty Claims', href: '/service_advisor/warranty', icon: ShieldCheck },
-									{ label: 'History', href: '/service_advisor/history', icon: History }
+									{ label: 'Dashboard', href: '/service_staff', icon: LayoutDashboard },
+									{ label: 'Maintenance', href: '/service_staff/maintenance', icon: Warehouse },
+									{ label: 'Repairs', href: '/service_staff/repairs', icon: Wrench },
+									{ label: 'Warranty Claims', href: '/service_staff/warranty_claims', icon: ShieldCheck },
+									{ label: 'History', href: '/service_staff/history', icon: History }
 								]
 							: []
 	);
@@ -132,7 +132,8 @@
 		position: fixed;
 		top: 0;
 		left: 0;
-		padding: .5rem
+		padding: .5rem;
+		z-index: 50;
 	}
 	.brand-logo {
 		display: block;
@@ -146,6 +147,7 @@
 		flex: 1;
 		overflow-y: auto;
 		padding: 0.5rem 0;
+
 	}
 	nav a {
 		display: flex;
@@ -154,8 +156,9 @@
 		padding: 0.75rem 1.25rem;
 		color: var(--text-primary);
 		text-decoration: none;
-		transition: background 0.15s, color 0.15s;
+		transition: all 0.30s;
 		margin-top: .5rem;
+		border-left: 3px transparent;
 	}
 	nav a:hover{
 		border-left: 3px solid var(--primary);

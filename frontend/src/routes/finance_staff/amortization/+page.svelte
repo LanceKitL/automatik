@@ -6,12 +6,12 @@
 		type OverdueItem
 	} from '$lib/services/api';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import { toast } from 'svelte-sonner';
 	import { AlertTriangle, Search } from '@lucide/svelte';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let entries = $state<OverdueItem[]>([]);
-	let message = $state('');
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	let searchQuery = $state('');
@@ -61,13 +61,12 @@
 
 	async function handleMarkPaid(scheduleId: number) {
 		if (!confirm('Mark this entry as paid?')) return;
-		message = '';
 		try {
 			await updateAmortizationStatus(scheduleId, 'paid');
-			message = `Entry #${scheduleId} marked as paid.`;
+			toast.success(`Entry #${scheduleId} marked as paid.`);
 			await loadOverdue();
 		} catch (e: unknown) {
-			message = e instanceof Error ? e.message : 'Error.';
+			toast.error(e instanceof Error ? e.message : 'Error marking as paid.');
 		}
 	}
 
@@ -98,10 +97,6 @@
 			</div>
 		</div>
 	</div>
-
-	{#if message}
-		<div class="msg">{message}</div>
-	{/if}
 
 	<!-- Mini stats -->
 	<div class="stats-row">

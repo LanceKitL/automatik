@@ -47,6 +47,7 @@ from routes.supplier import supplier_bp
 from routes.supplies import supplies_bp
 from routes.finance_staff import finance_staff_bp
 from routes.service_advisor import service_advisor_bp
+from routes.service_staff import service_staff_bp
 
 # ── Blueprint registration ───────────────────────────────────────────────
 app.register_blueprint(admin_bp, url_prefix="/admin")
@@ -65,6 +66,7 @@ app.register_blueprint(sales_bp)           # no prefix — uses /admin/... and /
 app.register_blueprint(agent_bp)
 app.register_blueprint(finance_staff_bp, url_prefix="/finance_staff")
 app.register_blueprint(service_advisor_bp, url_prefix="/service_advisor")
+app.register_blueprint(service_staff_bp, url_prefix="/service_staff")
 
 
 # ── CORS ─────────────────────────────────────────────────────────────────

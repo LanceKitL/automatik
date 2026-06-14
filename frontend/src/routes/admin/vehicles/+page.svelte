@@ -3,10 +3,11 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import DataTable from '$lib/components/DataTable.svelte';
-  import StatCard from '$lib/components/StatCard.svelte';
+  import { toast } from 'svelte-sonner';
+  import { Search, Plus, Package, Building2, Box, Eye, Pencil, Trash2, X, CheckCircle, AlertTriangle } from '@lucide/svelte';
   import {
     getAdminInventory, createVehicle, updateVehicle, deleteVehicle,
-    updateVehicleStatus, uploadVehiclePhoto,
+    updateVehicleStatus, uploadVehiclePhoto, deleteVehiclePhoto, resolvePhotoUrl,
     createSupplier, updateSupplier, deleteSupplier,
     createSupply, updateSupply, deleteSupply,
   } from '$lib/services/api';
@@ -24,6 +25,25 @@
   let lowStockThreshold = $state(5);
   let loading = $state(true);
   let error   = $state<string | null>(null);
+  let photoModalVehicle = $state<Record<string, unknown> | null>(null);
+  let deletingPhoto = $state<number | null>(null);
+
+  async function handleDeletePhoto(photoId: number) {
+    if (!confirm('Delete this photo?')) return;
+    deletingPhoto = photoId;
+    try {
+      await deleteVehiclePhoto(photoId);
+      const vehicle = photoModalVehicle!;
+      vehicle.photos = (vehicle.photos as any[]).filter((p: any) => p.photo_id !== photoId);
+      photoModalVehicle = { ...vehicle };
+      if (!(vehicle.photos as any[]).length) photoModalVehicle = null;
+      toast.success('Photo deleted');
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      deletingPhoto = null;
+    }
+  }
 
   async function loadAll() {
     loading = true; error = null;
@@ -36,6 +56,36 @@
     } catch (e) { error = (e as Error).message; }
     finally { loading = false; }
   }
+
+  // ── Search ─────────────────────────────────────────────────────────────
+  let searchQuery = $state('');
+  let statusFilter = $state('');
+
+  let filteredVehicles = $derived(
+    vehicles.filter(v => {
+      if (statusFilter && v.status !== statusFilter) return false;
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return String(v.brand ?? '').toLowerCase().includes(q) ||
+             String(v.model ?? '').toLowerCase().includes(q) ||
+             String(v.vin ?? '').toLowerCase().includes(q);
+    })
+  );
+
+  let filteredSuppliers = $derived(
+    searchQuery ? suppliers.filter(s =>
+      String(s.company_name ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      String(s.contact_name ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      String(s.contact_email ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+    ) : suppliers
+  );
+
+  let filteredSupplies = $derived(
+    searchQuery ? supplies.filter(s =>
+      String(s.part_name ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      String(s.part_number ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+    ) : supplies
+  );
 
   // ── Stats ─────────────────────────────────────────────────────────────
   let totalVehicles      = $derived(vehicles.length);
@@ -100,27 +150,28 @@
         }
       }
       showVehicleModal = false; await loadAll();
-    } catch (e) { vehicleError = (e as Error).message; }
+      toast.success(editingVehicle ? 'Vehicle updated' : 'Vehicle created');
+    } catch (e) { vehicleError = (e as Error).message; toast.error((e as Error).message); }
     finally { vehicleSubmitting = false; }
   }
 
   async function handleDeleteVehicle(id: number) {
     if (!confirm('Delete this vehicle? This cannot be undone.')) return;
-    try { await deleteVehicle(id); await loadAll(); }
-    catch (e) { alert((e as Error).message); }
+    try { await deleteVehicle(id); await loadAll(); toast.success('Vehicle removed from inventory'); }
+    catch (e) { toast.error((e as Error).message); }
   }
 
   async function handleStatusTransition(id: number, current: string) {
     const next: Record<string, string> = { available: 'reserved', reserved: 'delivered' };
     if (!next[current]) return;
-    try { await updateVehicleStatus(id, next[current]); await loadAll(); }
-    catch (e) { alert((e as Error).message); }
+    try { await updateVehicleStatus(id, next[current]); await loadAll(); toast.success('Status updated to ' + next[current]); }
+    catch (e) { toast.error((e as Error).message); }
   }
 
   async function handleDiscontinue(id: number) {
     if (!confirm('Mark as discontinued?')) return;
-    try { await updateVehicleStatus(id, 'discontinued'); await loadAll(); }
-    catch (e) { alert((e as Error).message); }
+    try { await updateVehicleStatus(id, 'discontinued'); await loadAll(); toast.success('Vehicle discontinued'); }
+    catch (e) { toast.error((e as Error).message); }
   }
 
   // ── Supplier CRUD ─────────────────────────────────────────────────────
@@ -155,14 +206,15 @@
         ? await updateSupplier(editingSupplier.supplier_id as number, payload)
         : await createSupplier(payload);
       showSupplierModal = false; await loadAll();
-    } catch (e) { supplierError = (e as Error).message; }
+      toast.success(editingSupplier ? 'Supplier updated' : 'Supplier created');
+    } catch (e) { supplierError = (e as Error).message; toast.error((e as Error).message); }
     finally { supplierSubmitting = false; }
   }
 
   async function handleDeleteSupplier(id: number) {
     if (!confirm('Delete this supplier?')) return;
-    try { await deleteSupplier(id); await loadAll(); }
-    catch (e) { alert((e as Error).message); }
+    try { await deleteSupplier(id); await loadAll(); toast.success('Supplier deleted'); }
+    catch (e) { toast.error((e as Error).message); }
   }
 
   // ── Supply CRUD ───────────────────────────────────────────────────────
@@ -199,14 +251,15 @@
         ? await updateSupply(editingSupply.supply_id as number, payload)
         : await createSupply(payload);
       showSupplyModal = false; await loadAll();
-    } catch (e) { supplyError = (e as Error).message; }
+      toast.success(editingSupply ? 'Supply item updated' : 'Supply item created');
+    } catch (e) { supplyError = (e as Error).message; toast.error((e as Error).message); }
     finally { supplySubmitting = false; }
   }
 
   async function handleDeleteSupply(id: number) {
     if (!confirm('Delete this supply item?')) return;
-    try { await deleteSupply(id); await loadAll(); }
-    catch (e) { alert((e as Error).message); }
+    try { await deleteSupply(id); await loadAll(); toast.success('Supply item deleted'); }
+    catch (e) { toast.error((e as Error).message); }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────
@@ -231,28 +284,50 @@
   <!-- Top bar -->
   <div class="top-bar">
     <div class="title-row">
-      <h1>Inventory Management</h1>
+      <div>
+        <h1>Inventory Management</h1>
+        <p class="title-subtitle">Manage vehicles, suppliers, and supplies</p>
+      </div>
+    </div>
+    <div class="toolbar">
+      <div class="search-wrap">
+        <Search class="search-icon" size={14} />
+        <input
+          type="text"
+          class="search-input"
+          placeholder="Search vehicles, suppliers, supplies…"
+          bind:value={searchQuery}
+        />
+      </div>
     </div>
   </div>
 
   <!-- Stat cards -->
   <div class="stats-row">
-    <div class="sc s1">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><rect x="9" y="11" width="14" height="10" rx="2"/><circle cx="12" cy="21" r="1"/><circle cx="20" cy="21" r="1"/></svg>
-      <div><span class="sc-val">{totalVehicles}</span><span class="sc-lbl">Total Vehicles</span></div>
+    <div class="mini-stat s1">
+      <Package size={18} />
+      <div><span class="mini-val">{totalVehicles}</span><span class="mini-lbl">Total Vehicles</span></div>
     </div>
-    <div class="sc s2">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-      <div><span class="sc-val">{availableCount}</span><span class="sc-lbl">Available</span></div>
+    <div class="mini-stat s2">
+      <CheckCircle size={18} />
+      <div><span class="mini-val">{availableCount}</span><span class="mini-lbl">Available</span></div>
     </div>
-    <div class="sc s3">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10.29 3.86-8.28 14.36A2 2 0 0 0 3.74 21h16.52a2 2 0 0 0 1.73-3l-8.28-14.14a2 2 0 0 0-3.46.03z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <div><span class="sc-val">{lowStockModelCount}</span><span class="sc-lbl">Low Stock Models</span></div>
+    <div class="mini-stat s3">
+      <AlertTriangle size={18} />
+      <div><span class="mini-val">{lowStockModelCount}</span><span class="mini-lbl">Low Stock Models</span></div>
     </div>
-    <div class="sc s4">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-      <div><span class="sc-val">{activeSupplierCount}</span><span class="sc-lbl">Active Suppliers</span></div>
+    <div class="mini-stat s4">
+      <Building2 size={18} />
+      <div><span class="mini-val">{activeSupplierCount}</span><span class="mini-lbl">Active Suppliers</span></div>
     </div>
+  </div>
+
+  <!-- Status filter pills -->
+  <div class="status-filters">
+    <button class="status-pill" class:active={!statusFilter} onclick={() => statusFilter = ''}>All</button>
+    {#each ['available','reserved','delivered','discontinued'] as s}
+      <button class="status-pill" class:active={statusFilter === s} onclick={() => statusFilter = s}>{s}</button>
+    {/each}
   </div>
 
   <!-- Tab bar -->
@@ -264,17 +339,17 @@
     </div>
     {#if activeTab === 'vehicles'}
       <button class="add-btn" onclick={openAddVehicle}>
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <Plus size={13} />
         Add Vehicle
       </button>
     {:else if activeTab === 'suppliers'}
       <button class="add-btn" onclick={openAddSupplier}>
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <Plus size={13} />
         Add Supplier
       </button>
     {:else}
       <button class="add-btn" onclick={openAddSupply}>
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <Plus size={13} />
         Add Supply
       </button>
     {/if}
@@ -289,14 +364,23 @@
     <!-- VEHICLES -->
     {#if activeTab === 'vehicles'}
       <DataTable columns={[
-        {key:'vehicle_id',label:'ID'},{key:'brand',label:'Brand/Model'},{key:'vin',label:'VIN'},
+        {key:'vehicle_id',label:'ID'},{key:'photo',label:'Photo'},{key:'brand',label:'Brand/Model'},{key:'vin',label:'VIN'},
         {key:'year',label:'Year'},{key:'color',label:'Color'},{key:'body_type',label:'Body'},
         {key:'transmission',label:'Trans'},{key:'fuel_type',label:'Fuel'},{key:'price',label:'Price'},
         {key:'supplier_name',label:'Supplier'},{key:'status',label:'Status'},{key:'actions',label:'Actions'},
       ]}>
-        {#each vehicles as v (v.vehicle_id)}
+        {#each filteredVehicles as v (v.vehicle_id)}
           <tr>
             <td class="cell-id">#{v.vehicle_id}</td>
+            <td>
+              {#if (v.photos as any[])?.length}
+                <button class="btn-view-photo" onclick={() => photoModalVehicle = v}>
+                  <Eye size={12} /> View
+                </button>
+              {:else}
+                <span class="no-photo-label">—</span>
+              {/if}
+            </td>
             <td class="cell-name">
               {v.brand as string} {v.model as string}
               {#if v.is_low_stock}<span class="low-badge">Low</span>{/if}
@@ -309,7 +393,7 @@
             <td class="capitalize">{v.fuel_type as string}</td>
             <td class="cell-mono">₱{Number(v.price).toLocaleString()}</td>
             <td>{v.supplier_name as string}</td>
-            <td><span class="status-badge {statusClass(v.status)}"><span class="s-dot"></span>{v.status as string}</span></td>
+            <td><span class="badge {statusClass(v.status)}">{v.status as string}</span></td>
             <td>
               <div class="act">
                 {#if v.status === 'available'}
@@ -317,9 +401,9 @@
                 {:else if v.status === 'reserved'}
                   <button class="btn-sm btn-trans" onclick={() => handleStatusTransition(v.vehicle_id as number, 'reserved')}>→ Deliver</button>
                 {/if}
-                <button class="btn-sm btn-edit" onclick={() => openEditVehicle(v)}>Edit</button>
+                <button class="btn-sm btn-edit" onclick={() => openEditVehicle(v)}><Pencil size={10} /> Edit</button>
                 <button class="btn-sm btn-disc" onclick={() => handleDiscontinue(v.vehicle_id as number)}>Discontinue</button>
-                <button class="btn-sm btn-del" onclick={() => handleDeleteVehicle(v.vehicle_id as number)}>Delete</button>
+                <button class="btn-sm btn-del" onclick={() => handleDeleteVehicle(v.vehicle_id as number)}><Trash2 size={10} /> Delete</button>
               </div>
             </td>
           </tr>
@@ -334,7 +418,7 @@
         {key:'contact_phone',label:'Phone'},{key:'contact_email',label:'Email'},
         {key:'total_vehicles',label:'Vehicles'},{key:'is_active',label:'Status'},{key:'actions',label:'Actions'},
       ]}>
-        {#each suppliers as s (s.supplier_id)}
+        {#each filteredSuppliers as s (s.supplier_id)}
           <tr>
             <td class="cell-id">#{s.supplier_id}</td>
             <td class="cell-name">{s.company_name as string}</td>
@@ -345,8 +429,8 @@
             <td><span class="active-badge {s.is_active ? 'ab-yes' : 'ab-no'}">{s.is_active ? 'Active' : 'Inactive'}</span></td>
             <td>
               <div class="act">
-                <button class="btn-sm btn-edit" onclick={() => openEditSupplier(s)}>Edit</button>
-                <button class="btn-sm btn-del" onclick={() => handleDeleteSupplier(s.supplier_id as number)}>Delete</button>
+                <button class="btn-sm btn-edit" onclick={() => openEditSupplier(s)}><Pencil size={10} /> Edit</button>
+                <button class="btn-sm btn-del" onclick={() => handleDeleteSupplier(s.supplier_id as number)}><Trash2 size={10} /> Delete</button>
               </div>
             </td>
           </tr>
@@ -361,7 +445,7 @@
         {key:'unit_cost',label:'Unit Cost'},{key:'stock_qty',label:'Stock'},
         {key:'reorder_level',label:'Reorder'},{key:'company_name',label:'Supplier'},{key:'actions',label:'Actions'},
       ]}>
-        {#each supplies as s (s.supply_id)}
+        {#each filteredSupplies as s (s.supply_id)}
           <tr>
             <td class="cell-id">#{s.supply_id}</td>
             <td class="cell-name">{s.part_name as string}</td>
@@ -375,8 +459,8 @@
             <td>{s.company_name as string}</td>
             <td>
               <div class="act">
-                <button class="btn-sm btn-edit" onclick={() => openEditSupply(s)}>Edit</button>
-                <button class="btn-sm btn-del" onclick={() => handleDeleteSupply(s.supply_id as number)}>Delete</button>
+                <button class="btn-sm btn-edit" onclick={() => openEditSupply(s)}><Pencil size={10} /> Edit</button>
+                <button class="btn-sm btn-del" onclick={() => handleDeleteSupply(s.supply_id as number)}><Trash2 size={10} /> Delete</button>
               </div>
             </td>
           </tr>
@@ -388,227 +472,342 @@
 
 <!-- ── Vehicle Modal ────────────────────────────────────────────────────── -->
 {#if showVehicleModal}
-  <div class="modal-backdrop" onclick={() => showVehicleModal = false} role="presentation">
+  <div class="modal-overlay" onclick={() => showVehicleModal = false} role="presentation">
     <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-      <div class="modal-head">
+      <div class="modal-header">
         <h2>{editingVehicle ? 'Edit Vehicle' : 'Add Vehicle'}</h2>
         <button class="modal-close" onclick={() => showVehicleModal = false} aria-label="Close">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <X size={16} />
         </button>
       </div>
       {#if vehicleError}<p class="form-error">{vehicleError}</p>{/if}
-      <form onsubmit={(e) => { e.preventDefault(); handleVehicleSubmit(); }}>
-        <div class="form-grid">
-          <label>Brand <input type="text" bind:value={vehicleForm.brand} required /></label>
-          <label>Model <input type="text" bind:value={vehicleForm.model} required /></label>
-          <label>Year <input type="number" bind:value={vehicleForm.year} required /></label>
-          <label>Color <input type="text" bind:value={vehicleForm.color} /></label>
-          <label>Body Type
-            <select bind:value={vehicleForm.body_type}>
-              <option value="">— Select —</option>
-              {#each bodyTypes as bt}<option value={bt}>{bt}</option>{/each}
-            </select>
+      <div class="modal-body">
+        <form onsubmit={(e) => { e.preventDefault(); handleVehicleSubmit(); }}>
+          <div class="form-grid">
+            <label class="field">
+              <span class="field-label">Brand</span>
+              <input type="text" class="field-input" bind:value={vehicleForm.brand} required />
+            </label>
+            <label class="field">
+              <span class="field-label">Model</span>
+              <input type="text" class="field-input" bind:value={vehicleForm.model} required />
+            </label>
+            <label class="field">
+              <span class="field-label">Year</span>
+              <input type="number" class="field-input" bind:value={vehicleForm.year} required />
+            </label>
+            <label class="field">
+              <span class="field-label">Color</span>
+              <input type="text" class="field-input" bind:value={vehicleForm.color} />
+            </label>
+            <label class="field">
+              <span class="field-label">Body Type</span>
+              <select class="field-input" bind:value={vehicleForm.body_type}>
+                <option value="">— Select —</option>
+                {#each bodyTypes as bt}<option value={bt}>{bt}</option>{/each}
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Transmission</span>
+              <select class="field-input" bind:value={vehicleForm.transmission} required>
+                {#each transmissions as t}<option value={t}>{t}</option>{/each}
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Fuel Type</span>
+              <select class="field-input" bind:value={vehicleForm.fuel_type} required>
+                {#each fuelTypes as f}<option value={f}>{f}</option>{/each}
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Price (₱)</span>
+              <input type="number" step="0.01" class="field-input" bind:value={vehicleForm.price} required />
+            </label>
+            <label class="field">
+              <span class="field-label">Seats</span>
+              <input type="number" class="field-input" bind:value={vehicleForm.seating_capacity} />
+            </label>
+            <label class="field">
+              <span class="field-label">VIN</span>
+              <input type="text" class="field-input" bind:value={vehicleForm.vin} required disabled={!!editingVehicle} />
+            </label>
+            <label class="field">
+              <span class="field-label">Status</span>
+              <select class="field-input" bind:value={vehicleForm.status}>
+                {#each vStatuses as s}<option value={s}>{s}</option>{/each}
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Supplier</span>
+              <select class="field-input" bind:value={vehicleForm.supplier_id} required>
+                <option value="">— Select Supplier —</option>
+                {#each suppliers as s}<option value={s.supplier_id}>{s.company_name as string}</option>{/each}
+              </select>
+            </label>
+          </div>
+          <label class="field full-field">
+            <span class="field-label">Specs (JSON)</span>
+            <textarea rows="4" class="field-textarea" bind:value={vehicleForm.specs_json}></textarea>
           </label>
-          <label>Transmission
-            <select bind:value={vehicleForm.transmission} required>
-              {#each transmissions as t}<option value={t}>{t}</option>{/each}
-            </select>
+          <label class="field full-field">
+            <span class="field-label">Photos {#if !editingVehicle}<span class="optional">(add after saving)</span>{:else}<span class="optional">(add more)</span>{/if}</span>
+            <input type="file" multiple accept="image/*" onchange={(e) => {
+              const input = e.target as HTMLInputElement;
+              if (input.files) vehicleFiles = Array.from(input.files);
+            }} />
           </label>
-          <label>Fuel Type
-            <select bind:value={vehicleForm.fuel_type} required>
-              {#each fuelTypes as f}<option value={f}>{f}</option>{/each}
-            </select>
-          </label>
-          <label>Price (₱) <input type="number" step="0.01" bind:value={vehicleForm.price} required /></label>
-          <label>Seats <input type="number" bind:value={vehicleForm.seating_capacity} /></label>
-          <label>VIN <input type="text" bind:value={vehicleForm.vin} required disabled={!!editingVehicle} /></label>
-          <label>Status
-            <select bind:value={vehicleForm.status}>
-              {#each vStatuses as s}<option value={s}>{s}</option>{/each}
-            </select>
-          </label>
-          <label>Supplier
-            <select bind:value={vehicleForm.supplier_id} required>
-              <option value="">— Select Supplier —</option>
-              {#each suppliers as s}<option value={s.supplier_id}>{s.company_name as string}</option>{/each}
-            </select>
-          </label>
-        </div>
-        <label class="full-label">Specs (JSON) <textarea rows="4" bind:value={vehicleForm.specs_json}></textarea></label>
-        <label class="full-label">Photos {#if !editingVehicle}<em class="hint">(add after saving)</em>{:else}<em class="hint">(add more)</em>{/if}
-          <input type="file" multiple accept="image/*" onchange={(e) => {
-            const input = e.target as HTMLInputElement;
-            if (input.files) vehicleFiles = Array.from(input.files);
-          }} />
-        </label>
-        <div class="modal-actions">
-          <button type="button" class="btn-cancel" onclick={() => showVehicleModal = false}>Cancel</button>
-          <button type="submit" class="btn-primary" disabled={vehicleSubmitting}>{vehicleSubmitting ? 'Saving…' : 'Save Vehicle'}</button>
-        </div>
-      </form>
+          <div class="modal-footer">
+            <button type="button" class="modal-cancel" onclick={() => showVehicleModal = false}>Cancel</button>
+            <button type="submit" class="modal-submit" disabled={vehicleSubmitting}>{vehicleSubmitting ? 'Saving…' : 'Save Vehicle'}</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 {/if}
 
 <!-- ── Supplier Modal ───────────────────────────────────────────────────── -->
 {#if showSupplierModal}
-  <div class="modal-backdrop" onclick={() => showSupplierModal = false} role="presentation">
+  <div class="modal-overlay" onclick={() => showSupplierModal = false} role="presentation">
     <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-      <div class="modal-head">
+      <div class="modal-header">
         <h2>{editingSupplier ? 'Edit Supplier' : 'Add Supplier'}</h2>
         <button class="modal-close" onclick={() => showSupplierModal = false} aria-label="Close">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <X size={16} />
         </button>
       </div>
       {#if supplierError}<p class="form-error">{supplierError}</p>{/if}
-      <form onsubmit={(e) => { e.preventDefault(); handleSupplierSubmit(); }}>
-        <div class="form-grid">
-          <label>Company Name <input type="text" bind:value={supplierForm.company_name} required /></label>
-          <label>Contact Name <input type="text" bind:value={supplierForm.contact_name} /></label>
-          <label>Contact Email <input type="email" bind:value={supplierForm.contact_email} /></label>
-          <label>Contact Phone <input type="text" bind:value={supplierForm.contact_phone} /></label>
-          <label>Address <input type="text" bind:value={supplierForm.address} /></label>
-          <label>Status
-            <select bind:value={supplierForm.is_active}>
-              <option value={1}>Active</option>
-              <option value={0}>Inactive</option>
-            </select>
-          </label>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn-cancel" onclick={() => showSupplierModal = false}>Cancel</button>
-          <button type="submit" class="btn-primary" disabled={supplierSubmitting}>{supplierSubmitting ? 'Saving…' : 'Save Supplier'}</button>
-        </div>
-      </form>
+      <div class="modal-body">
+        <form onsubmit={(e) => { e.preventDefault(); handleSupplierSubmit(); }}>
+          <div class="form-grid two-col">
+            <label class="field">
+              <span class="field-label">Company Name</span>
+              <input type="text" class="field-input" bind:value={supplierForm.company_name} required />
+            </label>
+            <label class="field">
+              <span class="field-label">Contact Name</span>
+              <input type="text" class="field-input" bind:value={supplierForm.contact_name} />
+            </label>
+            <label class="field">
+              <span class="field-label">Contact Email</span>
+              <input type="email" class="field-input" bind:value={supplierForm.contact_email} />
+            </label>
+            <label class="field">
+              <span class="field-label">Contact Phone</span>
+              <input type="text" class="field-input" bind:value={supplierForm.contact_phone} />
+            </label>
+            <label class="field">
+              <span class="field-label">Address</span>
+              <input type="text" class="field-input" bind:value={supplierForm.address} />
+            </label>
+            <label class="field">
+              <span class="field-label">Status</span>
+              <select class="field-input" bind:value={supplierForm.is_active}>
+                <option value={1}>Active</option>
+                <option value={0}>Inactive</option>
+              </select>
+            </label>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="modal-cancel" onclick={() => showSupplierModal = false}>Cancel</button>
+            <button type="submit" class="modal-submit" disabled={supplierSubmitting}>{supplierSubmitting ? 'Saving…' : 'Save Supplier'}</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 {/if}
 
 <!-- ── Supply Modal ─────────────────────────────────────────────────────── -->
 {#if showSupplyModal}
-  <div class="modal-backdrop" onclick={() => showSupplyModal = false} role="presentation">
+  <div class="modal-overlay" onclick={() => showSupplyModal = false} role="presentation">
     <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-      <div class="modal-head">
+      <div class="modal-header">
         <h2>{editingSupply ? 'Edit Supply' : 'Add Supply'}</h2>
         <button class="modal-close" onclick={() => showSupplyModal = false} aria-label="Close">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <X size={16} />
         </button>
       </div>
       {#if supplyError}<p class="form-error">{supplyError}</p>{/if}
-      <form onsubmit={(e) => { e.preventDefault(); handleSupplySubmit(); }}>
-        <div class="form-grid">
-          <label>Part Name <input type="text" bind:value={supplyForm.part_name} required /></label>
-          <label>Part Number <input type="text" bind:value={supplyForm.part_number} /></label>
-          <label>Unit Cost (₱) <input type="number" step="0.01" bind:value={supplyForm.unit_cost} /></label>
-          <label>Stock Qty <input type="number" bind:value={supplyForm.stock_qty} /></label>
-          <label>Reorder Level <input type="number" bind:value={supplyForm.reorder_level} /></label>
-          <label>Supplier
-            <select bind:value={supplyForm.supplier_id} required>
-              <option value="">— Select Supplier —</option>
-              {#each suppliers as s}<option value={s.supplier_id}>{s.company_name as string}</option>{/each}
-            </select>
-          </label>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn-cancel" onclick={() => showSupplyModal = false}>Cancel</button>
-          <button type="submit" class="btn-primary" disabled={supplySubmitting}>{supplySubmitting ? 'Saving…' : 'Save Supply'}</button>
-        </div>
-      </form>
+      <div class="modal-body">
+        <form onsubmit={(e) => { e.preventDefault(); handleSupplySubmit(); }}>
+          <div class="form-grid two-col">
+            <label class="field">
+              <span class="field-label">Part Name</span>
+              <input type="text" class="field-input" bind:value={supplyForm.part_name} required />
+            </label>
+            <label class="field">
+              <span class="field-label">Part Number</span>
+              <input type="text" class="field-input" bind:value={supplyForm.part_number} />
+            </label>
+            <label class="field">
+              <span class="field-label">Unit Cost (₱)</span>
+              <input type="number" step="0.01" class="field-input" bind:value={supplyForm.unit_cost} />
+            </label>
+            <label class="field">
+              <span class="field-label">Stock Qty</span>
+              <input type="number" class="field-input" bind:value={supplyForm.stock_qty} />
+            </label>
+            <label class="field">
+              <span class="field-label">Reorder Level</span>
+              <input type="number" class="field-input" bind:value={supplyForm.reorder_level} />
+            </label>
+            <label class="field">
+              <span class="field-label">Supplier</span>
+              <select class="field-input" bind:value={supplyForm.supplier_id} required>
+                <option value="">— Select Supplier —</option>
+                {#each suppliers as s}<option value={s.supplier_id}>{s.company_name as string}</option>{/each}
+              </select>
+            </label>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="modal-cancel" onclick={() => showSupplyModal = false}>Cancel</button>
+            <button type="submit" class="modal-submit" disabled={supplySubmitting}>{supplySubmitting ? 'Saving…' : 'Save Supply'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Photo Gallery Modal -->
+{#if photoModalVehicle}
+  {@const photos = (photoModalVehicle.photos as any[]) ?? []}
+  <div class="modal-overlay" onclick={() => photoModalVehicle = null} role="presentation">
+    <div class="modal modal-sm" onclick={(e) => e.stopPropagation()}>
+      <div class="modal-header">
+        <h3>{photoModalVehicle.brand as string} {photoModalVehicle.model as string} ({photos.length} photo{photos.length !== 1 ? 's' : ''})</h3>
+        <button class="btn-icon" onclick={() => photoModalVehicle = null}><X size={18} /></button>
+      </div>
+      <div class="photo-gallery">
+        {#each photos as photo}
+          <div class="photo-item">
+            <button class="photo-del-btn" onclick={() => handleDeletePhoto(photo.photo_id)} disabled={deletingPhoto === photo.photo_id}>
+              <Trash2 size={12} />
+            </button>
+            <img src={resolvePhotoUrl(photo.photo_url)} alt="Vehicle photo" />
+          </div>
+        {/each}
+      </div>
     </div>
   </div>
 {/if}
 
 <style>
-  .page { font-family: var(--font-sans); padding: 2rem 1.5rem; max-width: 1500px; margin: 0 auto; }
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+  .page { font-family: 'Syne', sans-serif; padding: 2rem 1.5rem; max-width: 1500px; margin: 0 auto; }
 
   /* Top bar */
-  .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; }
+  .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; flex-wrap: wrap; gap: 10px; }
   .title-row { display: flex; align-items: center; gap: 10px; }
-  .logo-badge { width: 36px; height: 36px; background: var(--primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 700; color: var(--accent); flex-shrink: 0; }
-  h1 { font-size: 20px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; margin: 0; }
+  .title-subtitle { font-size: 13px; color: #9ca3af; margin: 2px 0 0; font-weight: 400; }
+  .toolbar { display: flex; align-items: center; gap: 10px; }
+  .search-wrap { position: relative; }
+  .search-wrap :global(.search-icon) { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none; }
+  .search-input { height: 34px; padding: 0 12px 0 32px; border: 0.5px solid #e5e7eb; border-radius: 8px; font-family: 'Syne', sans-serif; font-size: 12px; color: #1a1a2e; background: #f9fafb; outline: none; width: 220px; }
+  .status-filters { display: flex; gap: 4px; margin-bottom: 1rem; flex-wrap: wrap; }
+  .status-pill { padding: 4px 14px; border-radius: 20px; border: 1px solid #e5e7eb; background: #fff; font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 500; color: #6b7280; cursor: pointer; text-transform: capitalize; transition: all 0.15s; }
+  .status-pill.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .status-pill:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
+  .search-input:focus { border-color: #7c9df7; background: #fff; }
+  h1 { font-size: 20px; font-weight: 700; color: #1a1a2e; letter-spacing: -0.5px; margin: 0; }
 
-  /* Stats */
+  /* Mini stats */
   .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 1.5rem; }
-  .sc { background: var(--bg-stat); border-radius: 10px; padding: .75rem 1rem; display: flex; align-items: center; gap: 10px; }
-  .sc svg { flex-shrink: 0; }
-  .sc.s1 svg { color: var(--accent-dark); } .sc.s2 svg { color: var(--success); }
-  .sc.s3 svg { color: var(--danger); } .sc.s4 svg { color: var(--primary-dark); }
-  .sc div { display: flex; flex-direction: column; }
-  .sc-val { font-size: 22px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; line-height: 1; }
-  .sc-lbl { font-size: 10px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.6px; text-transform: uppercase; margin-top: 2px; }
+  .mini-stat { background: #f8f7f4; border-radius: 10px; padding: .75rem 1rem; display: flex; align-items: center; gap: 10px; }
+  .s1 :global(svg) { color: #1a1a2e; flex-shrink: 0; }
+  .s2 :global(svg) { color: #059669; flex-shrink: 0; }
+  .s3 :global(svg) { color: #dc2626; flex-shrink: 0; }
+  .s4 :global(svg) { color: #7c9df7; flex-shrink: 0; }
+  .mini-stat div { display: flex; flex-direction: column; }
+  .mini-val { font-size: 22px; font-weight: 700; color: #1a1a2e; letter-spacing: -0.5px; line-height: 1; }
+  .mini-lbl { font-size: 10px; font-weight: 500; color: #9ca3af; letter-spacing: 0.6px; text-transform: uppercase; margin-top: 2px; }
 
   /* Tabs */
   .tabs-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px; }
-  .tabs { display: flex; background: var(--bg-stat); border-radius: 10px; padding: 3px; gap: 2px; }
-  .tab-btn { height: 30px; padding: 0 14px; border: none; border-radius: 8px; background: transparent; font-family: var(--font-sans); font-size: 11px; font-weight: 600; color: var(--text-light); cursor: pointer; transition: .15s; white-space: nowrap; }
-  .tab-btn.active { background: var(--primary); color: var(--accent); }
-  .add-btn { display: flex; align-items: center; gap: 5px; height: 32px; padding: 0 14px; background: var(--primary); color: var(--accent); border: none; border-radius: 8px; font-family: var(--font-sans); font-size: 11px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+  .tabs { display: flex; background: #f8f7f4; border-radius: 10px; padding: 3px; gap: 2px; }
+  .tab-btn { height: 30px; padding: 0 14px; border: none; border-radius: 8px; background: transparent; font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 600; color: #6b7280; cursor: pointer; transition: .15s; white-space: nowrap; }
+  .tab-btn.active { background: #1a1a2e; color: #e8c97e; }
+  .add-btn { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; background: #1a1a2e; color: #e8c97e; border: none; border-radius: 8px; font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 600; cursor: pointer; letter-spacing: 0.2px; transition: opacity .15s; }
   .add-btn:hover { opacity: .85; }
 
   /* Loading */
-  .loading-state { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 3rem; color: var(--text-muted); font-size: 13px; }
-  .spinner { width: 24px; height: 24px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; }
+  .loading-state { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 3rem; color: #9ca3af; font-size: 13px; }
+  .spinner { width: 24px; height: 24px; border: 2px solid #e5e7eb; border-top-color: #1a1a2e; border-radius: 50%; animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .error-msg { color: var(--danger); font-size: 13px; padding: 1rem; background: var(--danger-bg); border-radius: 8px; margin-bottom: 1rem; }
+  .error-msg { color: #A32D2D; font-size: 13px; padding: 1rem; background: #FCEBEB; border-radius: 8px; margin-bottom: 1rem; }
 
   /* Cells */
-  :global(.cell-id)   { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
-  :global(.cell-name) { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-  :global(.cell-mono) { font-family: var(--font-mono); font-size: 11px; color: var(--text-light); }
-  :global(.capitalize){ text-transform: capitalize; }
-  .low-badge { display: inline-block; background: var(--danger-bg); color: var(--danger-text); font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 10px; margin-left: 5px; letter-spacing: 0.3px; }
+  :global(.cell-id)   { font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 600; color: #7c9df7; }
+  :global(.cell-name) { font-size: 13px; font-weight: 600; color: #1a1a2e; }
+  :global(.cell-mono) { font-family: 'DM Mono', monospace; font-size: 11px; color: #6b7280; }
+  :global(.capitalize) { text-transform: capitalize; }
+  .low-badge { display: inline-block; background: #FCEBEB; color: #dc2626; font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 10px; margin-left: 5px; letter-spacing: 0.3px; }
+  .photo-yes { color: #059669; }
+  .photo-no { color: #d1d5db; }
+  .btn-view-photo { display: inline-flex; align-items: center; gap: 3px; border: none; padding: 3px 8px; border-radius: 6px; cursor: pointer; font-family: 'Syne', sans-serif; font-size: 10px; font-weight: 600; background: #dbeafe; color: #2563eb; transition: opacity .15s; white-space: nowrap; }
+  .btn-view-photo:hover { opacity: .7; }
+  .no-photo-label { color: #d1d5db; font-size: 12px; }
+  .photo-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; padding: 1rem 1.25rem; }
+  .photo-item { position: relative; }
+  .photo-item img { width: 100%; height: 160px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; display: block; }
+  .photo-del-btn { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.5); color: #fff; border: none; border-radius: 4px; padding: 4px 6px; cursor: pointer; opacity: 0; transition: opacity 0.15s; }
+  .photo-item:hover .photo-del-btn { opacity: 1; }
+  .photo-del-btn:hover:not(:disabled) { background: #dc2626; }
+  .photo-del-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
   /* Status badges */
-  .status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; text-transform: capitalize; }
-  .s-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-  :global(.st-available)    { background: var(--success-bg); color: var(--success-text); }
-  :global(.st-reserved)     { background: var(--warning-bg); color: var(--warning-text); }
-  :global(.st-delivered)    { background: var(--info-bg); color: var(--info-text); }
-  :global(.st-discontinued) { background: var(--danger-bg); color: var(--danger-text); }
-  :global(.st-available .s-dot)    { background: var(--success-dark); }
-  :global(.st-reserved .s-dot)     { background: var(--warning-dark); }
-  :global(.st-delivered .s-dot)    { background: var(--info); }
-  :global(.st-discontinued .s-dot) { background: var(--danger); }
+  .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: 10px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; }
+  :global(.st-available)    { background: #ecfdf5; color: #059669; }
+  :global(.st-reserved)     { background: #fef3c7; color: #d97706; }
+  :global(.st-delivered)    { background: #dbeafe; color: #2563eb; }
+  :global(.st-discontinued) { background: #FCEBEB; color: #dc2626; }
 
-  .active-badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 10px; font-weight: 600; }
-  .ab-yes { background: var(--success-bg); color: var(--success-text); }
-  .ab-no  { background: var(--bg-hover); color: var(--text-light); }
+  .active-badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 10px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; }
+  .ab-yes { background: #ecfdf5; color: #059669; }
+  .ab-no  { background: #f3f4f6; color: #6b7280; }
 
   /* Actions */
   .act { display: flex; gap: 4px; flex-wrap: nowrap; align-items: center; }
-  .btn-sm { display: inline-flex; align-items: center; gap: 3px; border: none; padding: 3px 8px; border-radius: 6px; cursor: pointer; font-family: var(--font-sans); font-size: 10px; font-weight: 600; transition: opacity .15s; white-space: nowrap; }
+  .btn-sm { display: inline-flex; align-items: center; gap: 3px; border: none; padding: 3px 8px; border-radius: 6px; cursor: pointer; font-family: 'Syne', sans-serif; font-size: 10px; font-weight: 600; transition: opacity .15s; white-space: nowrap; }
   .btn-sm:hover { opacity: .7; }
-  .btn-trans { background: var(--success-bg); color: var(--success-text); }
-  .btn-edit  { background: var(--warning-bg); color: var(--warning-text); }
-  .btn-disc  { background: #F1EFE8; color: #5F5E5A; }
-  .btn-del   { background: var(--danger-bg); color: var(--danger-text); }
+  .btn-trans { background: #ecfdf5; color: #059669; }
+  .btn-edit  { background: #fef3c7; color: #d97706; }
+  .btn-disc  { background: #f3f4f6; color: #6b7280; }
+  .btn-del   { background: #FCEBEB; color: #dc2626; }
 
   /* Modals */
-  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: flex-start; justify-content: center; padding-top: 2.5rem; z-index: 200; }
-  .modal { background: var(--bg-card); border-radius: var(--radius-lg); padding: 1.5rem; width: 90%; max-width: 44rem; max-height: 82vh; overflow-y: auto; }
-  .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
-  .modal-head h2 { font-size: 16px; font-weight: 700; color: var(--text-primary); margin: 0; }
-  .modal-close { background: var(--bg-hover); border: none; border-radius: 8px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-light); }
-  .modal-close:hover { background: var(--border); }
-  .form-error { color: var(--danger); background: var(--danger-bg); font-size: 12px; padding: .5rem .75rem; border-radius: 8px; margin-bottom: 1rem; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: flex-start; justify-content: center; padding-top: 2.5rem; z-index: 1000; }
+  .modal { background: #fff; border-radius: 12px; width: 90%; max-width: 44rem; max-height: 82vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; border-bottom: 0.5px solid #e5e7eb; }
+  .modal-header h2 { font-size: 16px; font-weight: 700; color: #1a1a2e; margin: 0; }
+  .modal-close { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: none; border-radius: 6px; background: transparent; color: #9ca3af; cursor: pointer; transition: .15s; }
+  .modal-close:hover { background: #f3f4f6; color: #1a1a2e; }
+  .form-error { color: #A32D2D; background: #FCEBEB; font-size: 12px; padding: .5rem .75rem; border-radius: 8px; margin-bottom: 1rem; }
+  .modal-body { padding: 1.25rem; }
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; margin-bottom: .75rem; }
-  .form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--text-muted); letter-spacing: .4px; text-transform: uppercase; }
-  .form-grid input, .form-grid select { padding: .45rem .6rem; font-size: 13px; font-family: var(--font-sans); border: 0.5px solid var(--border); border-radius: 8px; color: var(--text-primary); background: var(--bg-canvas); outline: none; }
-  .form-grid input:focus, .form-grid select:focus { border-color: var(--primary-light); background: var(--bg-card); }
-  .form-grid input:disabled { background: var(--bg-hover); color: var(--text-muted); cursor: not-allowed; }
-  .full-label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--text-muted); letter-spacing: .4px; text-transform: uppercase; margin-bottom: .75rem; }
-  .full-label textarea { padding: .45rem .6rem; font-size: 12px; font-family: var(--font-mono); border: 0.5px solid var(--border); border-radius: 8px; resize: vertical; outline: none; }
-  .full-label textarea:focus { border-color: var(--primary-light); }
-  .hint { font-size: 11px; color: var(--text-muted); text-transform: none; letter-spacing: 0; margin-left: 4px; font-style: italic; }
-  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 1.25rem; padding-top: 1rem; border-top: 0.5px solid var(--chart-grid); }
-  .btn-primary { height: 34px; padding: 0 18px; background: var(--primary); color: var(--accent); border: none; border-radius: 8px; font-family: var(--font-sans); font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
-  .btn-primary:hover { opacity: .85; }
-  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
-  .btn-cancel { height: 34px; padding: 0 16px; background: var(--bg-hover); color: var(--text-light); border: none; border-radius: 8px; font-family: var(--font-sans); font-size: 12px; font-weight: 600; cursor: pointer; }
-  .btn-cancel:hover { background: var(--border); }
+  .form-grid.two-col { grid-template-columns: 1fr 1fr; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field-label { font-size: 11px; font-weight: 600; color: #374151; letter-spacing: 0.3px; text-transform: uppercase; }
+  .optional { font-weight: 400; text-transform: none; color: #9ca3af; font-size: 10px; font-style: italic; }
+  .field-input { height: 36px; padding: 0 10px; border: 0.5px solid #e5e7eb; border-radius: 8px; font-family: 'Syne', sans-serif; font-size: 13px; color: #1a1a2e; background: #f9fafb; outline: none; width: 100%; box-sizing: border-box; }
+  .field-input:focus { border-color: #7c9df7; background: #fff; }
+  .field-input:disabled { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+  select.field-input { cursor: pointer; appearance: auto; }
+  .full-field { margin-bottom: .75rem; }
+  .field-textarea { padding: .45rem .6rem; font-size: 12px; font-family: 'DM Mono', monospace; border: 0.5px solid #e5e7eb; border-radius: 8px; resize: vertical; outline: none; width: 100%; box-sizing: border-box; }
+  .field-textarea:focus { border-color: #7c9df7; }
+  .modal-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 1rem; border-top: 0.5px solid #e5e7eb; }
+  .modal-submit { height: 34px; padding: 0 18px; background: #1a1a2e; color: #e8c97e; border: none; border-radius: 8px; font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+  .modal-submit:hover { opacity: .85; }
+  .modal-submit:disabled { opacity: .4; cursor: not-allowed; }
+  .modal-cancel { height: 34px; padding: 0 16px; border: 0.5px solid #e5e7eb; border-radius: 8px; background: #fff; font-family: 'Syne', sans-serif; font-size: 12px; color: #6b7280; cursor: pointer; transition: .15s; }
+  .modal-cancel:hover { background: #f9fafb; }
 
   @media (max-width: 768px) {
     .stats-row { grid-template-columns: repeat(2, 1fr); }
-    .form-grid  { grid-template-columns: 1fr; }
+    .form-grid { grid-template-columns: 1fr; }
+    .form-grid.two-col { grid-template-columns: 1fr; }
   }
 </style>

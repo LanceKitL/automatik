@@ -61,7 +61,7 @@ def submitInquiry(): # -> POST
                   (user,vehicle_id,message,'open'))
         
         audit_log(
-            id=res["user_id"], 
+            id=user, 
             action="POST", 
             tablename="inquiries", 
             record_id=res
@@ -112,7 +112,17 @@ def submitInquiry(): # -> POST
             )
         
         # send an email
-        inquiry_received(email)
+        try:
+            from flask import copy_current_request_context
+            import threading
+
+            @copy_current_request_context
+            def _send_inquiry_received():
+                inquiry_received(email)
+
+            threading.Thread(target=_send_inquiry_received, daemon=True).start()
+        except Exception:
+            pass
         
         return jsonify({"message": "Inquiry sent successfully!"}), 200
 
@@ -134,26 +144,25 @@ def indexCustomerInquiries():
                     (customer_id,),
                     fetch="all")
     
-    if not res:
-        return jsonify({"message": "customer not found."}), 404
-    
     formatted_data = []
     
-    for row in res:
-        formatted_data.append({
-            "inquiry_id": row["inquiry_id"],
-            "agent_assigned": row["agent_id"],
-            "message": row["message"],
-            "status": row["status"],
-            "resolved_at": row["resolved_at"],
-            "vehicle": {
-                "model": row["model"],
-                "brand": row["brand"],
-                "color": row["color"],
-                "body_type": row["body_type"],
-                "price": row["price"],
-            }
-        })
+    if res:
+        for row in res:
+            formatted_data.append({
+                "inquiry_id": row["inquiry_id"],
+                "agent_assigned": row["agent_id"],
+                "message": row["message"],
+                "status": row["status"],
+                "created_at": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
+                "resolved_at": row["resolved_at"].isoformat() if row["resolved_at"] and hasattr(row["resolved_at"], "isoformat") else str(row["resolved_at"]) if row["resolved_at"] else None,
+                "vehicle": {
+                    "model": row["model"],
+                    "brand": row["brand"],
+                    "color": row["color"],
+                    "body_type": row["body_type"],
+                    "price": row["price"],
+                }
+            })
     
     return jsonify(formatted_data), 200        
 
@@ -252,7 +261,14 @@ def assignInquiry(inquiry_id):
     if customer_email:
         try:
             from services.mail_service import inquiry_assigned
-            inquiry_assigned(customer_email, customer_name, agent_user["username"], inquiry_id)
+            from flask import copy_current_request_context
+            import threading
+
+            @copy_current_request_context
+            def _send_inquiry_assigned():
+                inquiry_assigned(customer_email, customer_name, agent_user["username"], inquiry_id)
+
+            threading.Thread(target=_send_inquiry_assigned, daemon=True).start()
         except Exception:
             pass
 
@@ -330,8 +346,15 @@ def selfAssignInquiry(inquiry_id):
     if customer_email:
         try:
             from services.mail_service import inquiry_assigned
-            inquiry_assigned(customer_email, customer_name,
-                             agent["username"] if agent else "Agent", inquiry_id)
+            from flask import copy_current_request_context
+            import threading
+
+            @copy_current_request_context
+            def _send_inquiry_assigned():
+                inquiry_assigned(customer_email, customer_name,
+                                 agent["username"] if agent else "Agent", inquiry_id)
+
+            threading.Thread(target=_send_inquiry_assigned, daemon=True).start()
         except Exception:
             pass
 
@@ -397,13 +420,20 @@ def resolveInquiry(inquiry_id):
         try:
             from services.mail_service import mail
             from flask_mail import Message
+            from flask import copy_current_request_context
+            import threading
             msg = Message(
                 sender=("AutoMatik", "AutoMatik@services.com"),
                 subject="Your Inquiry Has Been Resolved",
                 recipients=[customer_email]
             )
             msg.body = f"Hi {customer_name},\n\nYour inquiry #{inquiry_id} has been marked as resolved by {agent['username'] if agent else 'your agent'}. If you have further questions, please submit a new inquiry.\n\nThank you for choosing AutoMatik!"
-            mail.send(msg)
+
+            @copy_current_request_context
+            def _send_resolve_email():
+                mail.send(msg)
+
+            threading.Thread(target=_send_resolve_email, daemon=True).start()
         except Exception:
             pass
 
@@ -551,29 +581,46 @@ def convertInquiryToSale(inquiry_id):
 
         conn.commit()
 
-        # ── Notify finance staff ──
+        # ── Notify finance staff (installment) or admin (full_payment) ──
         agent_user = run_query("SELECT username FROM users WHERE user_id = %s",
                                (agent_id,), fetch="one")
         agent_name = agent_user["username"] if agent_user else f"Agent #{agent_id}"
-        broadcast_notif(
-            role="finance_staff",
-            title="New Sale for Review",
-            message=f"{agent_name} created Sale #{sale_id} for {vehicle['brand']} {vehicle['model']} — ₱{selling_price:,.2f} ({payment_type}). Pending processing.",
-            channel="in_app",
-            ref_type="sales",
-            ref_id=sale_id
-        )
+        if payment_type == "installment":
+            broadcast_notif(
+                role="finance_staff",
+                title="New Sale for Review",
+                message=f"{agent_name} created Sale #{sale_id} for {vehicle['brand']} {vehicle['model']} — ₱{selling_price:,.2f} ({payment_type}). Pending processing.",
+                channel="in_app",
+                ref_type="sales",
+                ref_id=sale_id
+            )
+        else:
+            broadcast_notif(
+                role="admin",
+                title="New Sale Completed",
+                message=f"{agent_name} completed Sale #{sale_id} for {vehicle['brand']} {vehicle['model']} — ₱{selling_price:,.2f} (full payment).",
+                channel="in_app",
+                ref_type="sales",
+                ref_id=sale_id
+            )
 
         # ── post-commit notifications ──
 
         if _new_customer_ctx:
             try:
                 from services.mail_service import welcome_user
+                from flask import copy_current_request_context
+                import threading
                 portal_url = f"http://{get_local_ip()}:5173"
-                welcome_user(_new_customer_ctx["guest_email"], "email/welcome.html",
-                             username=_new_customer_ctx["username"],
-                             temp_password=_new_customer_ctx["temp_password"],
-                             portal_url=portal_url)
+
+                @copy_current_request_context
+                def _send_welcome():
+                    welcome_user(_new_customer_ctx["guest_email"], "email/welcome.html",
+                                 username=_new_customer_ctx["username"],
+                                 temp_password=_new_customer_ctx["temp_password"],
+                                 portal_url=portal_url)
+
+                threading.Thread(target=_send_welcome, daemon=True).start()
             except Exception:
                 pass
             try:
@@ -584,9 +631,16 @@ def convertInquiryToSale(inquiry_id):
                 pass
 
         try:
+            from flask import copy_current_request_context
+            import threading
             vehicle_name = f"{vehicle['brand']} {vehicle['model']}"
-            send_sale_confirmation(customer["email"], customer["username"], sale_id,
-                                   vehicle_name, selling_price)
+
+            @copy_current_request_context
+            def _send_sale_confirm():
+                send_sale_confirmation(customer["email"], customer["username"], sale_id,
+                                       vehicle_name, selling_price)
+
+            threading.Thread(target=_send_sale_confirm, daemon=True).start()
         except Exception:
             pass
 
@@ -643,9 +697,16 @@ def sendEmailForInquiry(inquiry_id):
         return jsonify({"message": "No customer email address available."}), 400
 
     try:
-        send_custom_email(to_email, subject, body)
-    except Exception as e:
-        return jsonify({"message": "Failed to send email.", "error": str(e)}), 500
+        from flask import copy_current_request_context
+        import threading
+
+        @copy_current_request_context
+        def _send_custom():
+            send_custom_email(to_email, subject, body)
+
+        threading.Thread(target=_send_custom, daemon=True).start()
+    except Exception:
+        pass
 
     old_value = inquiry["status"]
     now = datetime.now()
@@ -923,3 +984,45 @@ def closeInquiry(inquiry_id):
     return jsonify({
         "message": "inquiry marked as 'closed'."
     }), 200
+
+# admin
+def deleteInquiry(inquiry_id):
+    """
+    ADMIN PORTAL
+
+    Force-delete an inquiry from the database.
+    This bypasses status checks — any inquiry can be deleted.
+    """
+    if not inquiry_id:
+        return jsonify({"message": "inquiry_id is required."}), 400
+
+    inquiry = run_query(
+        "SELECT * FROM inquiries WHERE inquiry_id = %s",
+        (inquiry_id,), fetch="one"
+    )
+
+    if not inquiry:
+        return jsonify({"message": "Inquiry not found."}), 404
+
+    run_query("DELETE FROM inquiries WHERE inquiry_id = %s", (inquiry_id,))
+
+    audit_log(
+        session["user"],
+        "DELETE",
+        "inquiries",
+        inquiry_id,
+        json.dumps(dict(inquiry), default=str),
+        None
+    )
+
+    if inquiry.get("user_id"):
+        fire_notif(
+            user_id=inquiry["user_id"],
+            title="Inquiry Deleted",
+            message=f"Your inquiry #{inquiry_id} has been removed by an admin.",
+            channel="in_app",
+            ref_type="inquiries",
+            ref_id=inquiry_id
+        )
+
+    return jsonify({"message": "Inquiry deleted successfully."}), 200

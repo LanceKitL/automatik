@@ -15,8 +15,9 @@ from controllers.salesController import (
     updateAmortizationStatus, getOverdueAmortizations, recomputeAmortization
 )
 from controllers.paymentsController import (
-    listPayments, getPayment, recordPayment,
-    getMyPayments, getSalePayments, getPaymentSummary
+    listPayments, getPayment, recordPayment, deletePayment,
+    getMyPayments, getSalePayments, getPaymentSummary,
+    adminUploadPaymentProof
 )
 
 sales_bp = Blueprint('sales', __name__)
@@ -233,6 +234,21 @@ def create_payment(sale_id):
 def sale_payments(sale_id):
     """Get all payments for a specific sale."""
     return getSalePayments(sale_id)
+
+@sales_bp.route("/admin/payments/<int:payment_id>", methods=["DELETE"])
+@logged_in_required
+@role_required("admin")
+def remove_payment(payment_id):
+    """Hard-delete a payment record."""
+    return deletePayment(payment_id)
+
+@sales_bp.route("/admin/payments/<int:payment_id>/upload-proof", methods=["POST"])
+@logged_in_required
+@role_required("admin")
+def admin_upload_payment_proof(payment_id):
+    """Upload proof of payment screenshot (admin)."""
+    return adminUploadPaymentProof(payment_id)
+
 
 @sales_bp.route("/admin/payments/summary", methods=["GET"])
 @logged_in_required

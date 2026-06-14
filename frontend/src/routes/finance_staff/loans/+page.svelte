@@ -7,6 +7,7 @@
 		type LoanItem
 	} from '$lib/services/api';
 	import DataTable from '$lib/components/DataTable.svelte';
+	import { toast } from 'svelte-sonner';
 	import { Banknote, Search, Plus } from '@lucide/svelte';
 	import CreateLoanDrawer from './CreateLoanDrawer.svelte';
 

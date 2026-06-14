@@ -15,7 +15,9 @@ def adminDashboard():
     open_inquiries = run_query("SELECT COUNT(*) AS count FROM inquiries WHERE status = 'open'", fetch="one")
 
     total_revenue = run_query(
-        "SELECT COALESCE(SUM(selling_price), 0) AS total FROM sales",
+        """SELECT COALESCE(SUM(s.selling_price), 0) - COALESCE((
+            SELECT SUM(commission_amount) FROM agent_commissions WHERE is_paid = 1
+        ), 0) AS total FROM sales s""",
         fetch="one",
     )
     active_sales = run_query(
@@ -81,8 +83,39 @@ def adminNotifications():
     return jsonify({"data": result})
 
 def adminAuditLogs():
-    """Return all audit logs."""
-    result = run_query("SELECT * FROM audit_logs ORDER BY created_at DESC", fetch="all")
+    """Return all audit logs with optional filters."""
+    user_id = request.args.get("user_id")
+    table_name = request.args.get("table_name")
+    action = request.args.get("action")
+    date_from = request.args.get("date_from")
+    date_to = request.args.get("date_to")
+
+    query = """
+        SELECT a.*, u.username
+        FROM audit_logs a
+        LEFT JOIN users u ON a.user_id = u.user_id
+        WHERE 1=1
+    """
+    params = []
+
+    if user_id:
+        query += " AND a.user_id = %s"
+        params.append(user_id)
+    if table_name:
+        query += " AND a.table_name = %s"
+        params.append(table_name)
+    if action:
+        query += " AND a.action = %s"
+        params.append(action)
+    if date_from:
+        query += " AND a.created_at >= %s"
+        params.append(date_from)
+    if date_to:
+        query += " AND a.created_at <= %s"
+        params.append(date_to)
+
+    query += " ORDER BY a.created_at DESC"
+    result = run_query(query, tuple(params) if params else None, fetch="all")
     return jsonify({"data": result})
 
 # ── Inventory (combined vehicles / suppliers / supplies) ──────────────────
@@ -381,8 +414,8 @@ def createUser():
     if not all([username, email, password, role]):
         return jsonify({"message": "username, email, password, and role are required."}), 400
 
-    if role not in ("admin", "agent", "customer"):
-        return jsonify({"message": "role must be admin, agent, or customer."}), 400
+    if role not in ("admin", "agent", "customer", "service_staff", "service_advisor", "finance_staff"):
+        return jsonify({"message": "role must be admin, agent, customer, service_staff, service_advisor, or finance_staff."}), 400
 
     # Check duplicate
     existing = run_query(

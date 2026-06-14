@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { margin:0; padding:0; background-color:#f0f1f5; font-family:Arial,Helvetica,sans-serif; }
+  .wrapper { width:100%; background-color:#f0f1f5; }
+  .container { max-width:560px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 2px 12px rgba(0,0,0,0.06); }
+  .header { background:#1a1a2e; padding:28px 24px; text-align:center; }
+  .header img { max-width:150px; height:auto; display:block; margin:0 auto 6px; }
+  .header .tagline { color:rgba(255,255,255,0.5); font-size:11px; letter-spacing:2px; text-transform:uppercase; }
+  .body { padding:28px 24px; color:#374151; }
+  .body h2 { font-size:20px; font-weight:700; color:#1a1a2e; margin:0 0 12px; }
+  .body p { line-height:1.7; margin:0 0 14px; font-size:15px; color:#4b5563; }
+  .details { width:100%; border-collapse:collapse; margin:16px 0; background:#f9fafb; border-radius:8px; overflow:hidden; }
+  .details td { padding:10px 14px; font-size:14px; border-bottom:1px solid #e5e7eb; }
+  .details tr:last-child td { border-bottom:none; }
+  .details .lbl { color:#6b7280; font-weight:500; width:40%; }
+  .details .val { color:#1a1a2e; font-weight:600; }
+  .btn-wrap { text-align:center; margin:20px 0 8px; }
+  .btn { display:inline-block; padding:13px 32px; background:#4169E1; color:#ffffff !important; text-decoration:none; border-radius:8px; font-weight:600; font-size:15px; }
+  .btn:hover { background:#2A4DB5; }
+  .footer { padding:20px 24px; text-align:center; background:#f9fafb; border-top:1px solid #e5e7eb; }
+  .footer p { margin:0 0 4px; font-size:12px; color:#9ca3af; line-height:1.6; }
+  .footer a { color:#4169E1; text-decoration:none; }
+  .info-box { background:#eef2ff; border-radius:8px; padding:14px 16px; margin:16px 0; font-size:14px; color:#4338ca; line-height:1.6; }
+  .info-box strong { color:#1e3a8a; }
+  .gold-line { height:3px; background:linear-gradient(90deg, #e8c97e, #d4a843); margin:0; }
+</style>
+</head>
+<body>
+<table class="wrapper" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px;">
+<table class="container" cellpadding="0" cellspacing="0">
+  <tr><td class="header">
+    <img src="{{ logo_url }}" alt="AutoMatik" />
+    <div class="tagline">Dealership Management System</div>
+  </td></tr>
+  <tr><td class="gold-line"></td></tr>
+  {% block content %}{% endblock %}
+  <tr><td class="footer">
+    <p><strong>AutoMatik</strong> — 123 AutoMall Drive, Makati City, Philippines</p>
+    <p>+63 (2) 8123 4567 &nbsp;·&nbsp; <a href="mailto:info@automatik.com">info@automatik.com</a></p>
+    <p style="margin-top:6px;">&copy; 2026 AutoMatik. All rights reserved.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>

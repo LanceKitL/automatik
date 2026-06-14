@@ -65,6 +65,35 @@ def getDashboard():
   
   return jsonify({"data": data}), 200
 
+def getTestDrives():
+    status_filter = request.args.get("status", "upcoming")
+    user_id = session["user"]
+
+    status_conditions = {
+        "upcoming": "AND b.status IN ('pending', 'confirmed')",
+        "completed": "AND b.status = 'completed'",
+        "cancelled": "AND b.status = 'cancelled'",
+    }
+    status_sql = status_conditions.get(status_filter, status_conditions["upcoming"])
+    order = "ASC" if status_filter == "upcoming" else "DESC"
+
+    bookings = run_query(f"""
+        SELECT b.*, s.slot_datetime, s.slot_type,
+               v.brand, v.model, v.year,
+               u.username AS customer_name,
+               a.username AS assigned_to_name
+        FROM service_bookings b
+        JOIN service_slots s ON b.slot_id = s.slot_id
+        JOIN vehicles v ON b.vehicle_id = v.vehicle_id
+        JOIN users u ON b.customer_id = u.user_id
+        LEFT JOIN users a ON b.assigned_to = a.user_id
+        WHERE b.booking_type = 'test_drive'
+        {status_sql}
+        ORDER BY s.slot_datetime {order}
+    """, fetch="all")
+
+    return jsonify({"data": bookings}), 200
+
 def getInquiries():
   """
     Returns all the self-assigned inquiries made by the agent.
@@ -103,7 +132,8 @@ def getInquiries():
                                 i.message,
                                 i.status,
                                 i.agent_id,
-                                i.inquiry_id
+                                i.inquiry_id,
+                                i.created_at
 
                                 FROM inquiries i
 
@@ -139,6 +169,7 @@ def getInquiries():
         "status": row["status"],
         "agent_assigned": row["agent_id"],
         "user_type": user_type,
+        "created_at": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
         "contacts": {
             "name": row["name"],
             "email": row["email"],
@@ -191,6 +222,7 @@ def getTasks():
     query = f"""
           SELECT
             at.task_id,
+            at.title,
             at.task_type,
             at.status,
             at.due_date,
@@ -247,6 +279,7 @@ def getTasks():
     for row in rows:
         task = {
             "task_id": row["task_id"],
+            "title": row["title"],
             "task_type": row["task_type"],
             "status": row["status"],
             "due_date": row["due_date"],
@@ -474,60 +507,65 @@ def getCommissions():
     if not current_agent:
         abort(404)
     
-    # storage (key:value) pair
-    data = {}
-    
-    # get the commissions
-    commissions = run_query("""
-                            SELECT * FROM agent_commissions
-                            WHERE agent_id = %s
-                            """,
-                            (current_agent,),
-                            fetch="all")
-    
-    agent_sales = run_query("""
-                            SELECT * FROM sales s
-                            JOIN vehicles v 
-                            ON s.vehicle_id = v.vehicle_id
-                            WHERE agent_id = %s
-                            """,
-                            (current_agent,),
-                            fetch="all")
-    
-    data["agent_commissions"] = commissions
-    data["agent_sales"] = agent_sales
+    rows = run_query("""
+        SELECT
+            ac.commission_id,
+            ac.sale_id,
+            ac.rate_applied,
+            ac.commission_amount,
+            ac.is_paid,
+            ac.paid_at,
+            s.sale_date,
+            s.status AS sale_status,
+            s.selling_price,
+            COALESCE(up.full_name, u.username) AS customer_name,
+            v.brand,
+            v.model
+        FROM agent_commissions ac
+        JOIN sales s ON ac.sale_id = s.sale_id
+        JOIN vehicles v ON s.vehicle_id = v.vehicle_id
+        LEFT JOIN users u ON s.customer_id = u.user_id
+        LEFT JOIN user_profile up ON s.customer_id = up.user_id
+        WHERE ac.agent_id = %s
+        ORDER BY s.sale_date DESC
+    """, (current_agent,), fetch="all")
     
     return jsonify({
-        "data": data
+        "data": rows
     }), 200
     
 def getCommissionsAdmin():
     agent_id = request.args.get("agent_id")
     is_paid = request.args.get("is_paid")
 
-    query = "SELECT * FROM agent_commissions"
-    conditions = []
+    query = """
+        SELECT ac.*, s.sale_date, s.selling_price,
+               COALESCE(up.full_name, cu.username) AS customer_name,
+               v.brand, v.model, v.year,
+               ag.username AS agent_name
+        FROM agent_commissions ac
+        JOIN sales s ON ac.sale_id = s.sale_id
+        JOIN vehicles v ON s.vehicle_id = v.vehicle_id
+        JOIN users cu ON s.customer_id = cu.user_id
+        LEFT JOIN user_profile up ON s.customer_id = up.user_id
+        LEFT JOIN users ag ON ac.agent_id = ag.user_id
+        WHERE 1=1
+    """
     params = []
 
     if agent_id:
-        conditions.append("agent_id = %s")
+        query += " AND ac.agent_id = %s"
         params.append(agent_id)
 
     if is_paid is not None:
         if is_paid not in ("0", "1"):
             return jsonify({"error": "is_paid must be 0 or 1"}), 400
 
-        conditions.append("is_paid = %s")
+        query += " AND ac.is_paid = %s"
         params.append(int(is_paid))
 
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-
-    commissions = run_query(
-        query,
-        tuple(params),
-        fetch="all"
-    )
+    query += " ORDER BY s.sale_date DESC"
+    commissions = run_query(query, tuple(params) if params else None, fetch="all")
 
     return jsonify(commissions), 200
 
@@ -538,7 +576,12 @@ def payCommission(commission_id):
         }), 400
 
     # check if the commission is already paid and existing
-    commission = run_query("SELECT * FROM agent_commissions WHERE commission_id = %s", (commission_id,), fetch="one")
+    commission = run_query("""
+        SELECT ac.*, s.status AS sale_status
+        FROM agent_commissions ac
+        JOIN sales s ON ac.sale_id = s.sale_id
+        WHERE ac.commission_id = %s
+    """, (commission_id,), fetch="one")
     
     if not commission:
         return jsonify({
@@ -548,6 +591,11 @@ def payCommission(commission_id):
     if commission["is_paid"] == 1:
         return jsonify({
             "message": "commission already paid."
+        }), 400
+    
+    if commission["sale_status"] not in ("active", "completed"):
+        return jsonify({
+            "message": "Cannot pay commission: sale must be active or completed."
         }), 400
     
     paid_at = datetime.now()
@@ -589,3 +637,133 @@ def agentPerformance(agent_id):
         "commission_total": float(stats["commission_total"]),
         "avg_rate": float(stats["avg_rate"])
     }), 200
+
+
+def agentSubmitInquiry():
+    """Agent creates an inquiry on behalf of a walk-in guest. Auto self-assigns."""
+    agent_id = session["user"]
+    data = request.get_json(silent=True) or {}
+
+    vehicle_id = data.get("vehicle_id")
+    message = data.get("message")
+    guest_name = data.get("guest_name")
+    guest_email = data.get("guest_email")
+    guest_number = data.get("guest_number")
+
+    if not all([vehicle_id, message, guest_name, guest_email]):
+        return jsonify({"message": "vehicle_id, message, guest_name, and guest_email are required."}), 400
+
+    inquiry_id = run_query("""
+        INSERT INTO inquiries (vehicle_id, message, agent_id, status, guest_name, guest_email, guest_number)
+        VALUES (%s, %s, %s, 'assigned', %s, %s, %s)
+    """, (vehicle_id, message, agent_id, guest_name, guest_email, guest_number))
+
+    if not inquiry_id:
+        return jsonify({"message": "Failed to create inquiry."}), 500
+
+    return jsonify({"message": "Inquiry created and assigned.", "inquiry_id": inquiry_id}), 201
+
+
+def agentBookTestDrive():
+    """Agent books a test drive for a walk-in guest (customer_id = NULL)."""
+    agent_id = session["user"]
+    data = request.get_json(silent=True) or {}
+
+    slot_id = data.get("slot_id")
+    vehicle_id = data.get("vehicle_id")
+    guest_name = data.get("guest_name")
+    guest_email = data.get("guest_email")
+
+    if not all([slot_id, vehicle_id, guest_name, guest_email]):
+        return jsonify({"message": "slot_id, vehicle_id, guest_name, and guest_email are required."}), 400
+
+    from conn import get_db
+    from utils.notification import broadcast_notif
+    from services.mail_service import send_test_drive_confirmed
+    import mysql.connector.errors
+
+    conn, cursor = get_db()
+    try:
+        cursor.execute(
+            "SELECT capacity, is_available FROM service_slots WHERE slot_id = %s FOR UPDATE",
+            (slot_id,))
+        slot = cursor.fetchone()
+
+        if not slot or not slot["is_available"]:
+            return jsonify({"message": "Slot is unavailable."}), 400
+
+        cursor.execute(
+            "SELECT COUNT(*) AS total FROM service_bookings WHERE slot_id = %s AND status != 'cancelled'",
+            (slot_id,))
+        current_bookings = cursor.fetchone()["total"]
+
+        if current_bookings >= slot["capacity"]:
+            return jsonify({"message": "Slot has reached its capacity."}), 409
+
+        cursor.execute("""
+            INSERT INTO service_bookings (customer_id, slot_id, vehicle_id, booking_type, status, notes)
+            VALUES (NULL, %s, %s, 'test_drive', 'pending', %s)
+        """, (slot_id, vehicle_id, f"Walk-in: {guest_name} <{guest_email}>"))
+        booking_id = cursor.lastrowid
+
+        if (current_bookings + 1) >= slot["capacity"]:
+            cursor.execute(
+                "UPDATE service_slots SET is_available = 0 WHERE slot_id = %s",
+                (slot_id,))
+
+        conn.commit()
+
+        from utils.log import audit_log
+        audit_log(agent_id, "POST", "service_bookings", booking_id, conn=conn, cursor=cursor)
+
+        # Notify admin
+        broadcast_notif(
+            role="admin",
+            title="New Walk-in Booking",
+            message=f"Test drive booking #{booking_id} created for walk-in guest {guest_name}.",
+            channel="in_app",
+            ref_type="service_bookings",
+            ref_id=booking_id,
+        )
+
+        # Send confirmation email
+        try:
+            slot_info = run_query(
+                "SELECT slot_datetime FROM service_slots WHERE slot_id = %s",
+                (slot_id,), fetch="one", conn=conn, cursor=cursor)
+            vehicle_info = run_query(
+                "SELECT CONCAT(brand, ' ', model) AS name FROM vehicles WHERE vehicle_id = %s",
+                (vehicle_id,), fetch="one", conn=conn, cursor=cursor)
+
+            if slot_info:
+                from flask import copy_current_request_context
+                import threading
+
+                @copy_current_request_context
+                def _send_test_drive():
+                    send_test_drive_confirmed(
+                        email=guest_email,
+                        name=guest_name,
+                        booking_id=booking_id,
+                        date_time=slot_info["slot_datetime"].strftime("%A, %B %d, %Y at %I:%M %p"),
+                        location="AutoMatik Dealership",
+                        vehicle_name=vehicle_info["name"] if vehicle_info else "your selected vehicle"
+                    )
+
+                threading.Thread(target=_send_test_drive, daemon=True).start()
+        except Exception:
+            pass
+
+        return jsonify({"message": "Test drive booked! Confirmation email sent.", "booking_id": booking_id}), 201
+
+    except mysql.connector.errors.OperationalError as e:
+        conn.rollback()
+        if "Lock wait timeout" in str(e):
+            return jsonify({"error": "Resource locked. Retry."}), 503
+        raise
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()

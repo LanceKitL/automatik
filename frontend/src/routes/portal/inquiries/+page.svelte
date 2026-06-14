@@ -1,28 +1,30 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getInquiries } from '$lib/services/api';
-	import { MessageSquareText, Send, X, Eye, Clock, CheckCircle, XCircle } from '@lucide/svelte';
+	import { getCustomerInquiries } from '$lib/services/api';
+	import type { CustomerInquiryItem } from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
+	import { MessageSquareText, Send, X, Clock, CheckCircle, XCircle } from '@lucide/svelte';
 	import Loader from '$lib/components/Loader.svelte';
 
-	let inquiries: Record<string, any>[] = $state([]);
+	let inquiries: CustomerInquiryItem[] = $state([]);
 	let loading = $state(true);
 	let filter = $state('all');
-	let replyModal = $state<Record<string, any> | null>(null);
+	let replyModal = $state<CustomerInquiryItem | null>(null);
 	let replyText = $state('');
 
 	onMount(async () => {
 		try {
-			const res = await getInquiries();
-			inquiries = Array.isArray(res) ? res : (res.data ?? []);
+			inquiries = await getCustomerInquiries();
 		} catch {
-			// ignore
+			toast.error('Failed to load inquiries.');
+			inquiries = [];
 		} finally {
 			loading = false;
 		}
 	});
 
 	let filtered = $derived(
-		filter === 'all' ? inquiries : inquiries.filter((i: any) => i.status === filter.replace('-', ' '))
+		filter === 'all' ? inquiries : inquiries.filter(i => i.status === filter)
 	);
 
 	function sendReply() {
@@ -33,7 +35,6 @@
 
 	const statusConfig: Record<string, { class: string; icon: any; label: string }> = {
 		'open': { class: 'status-open', icon: Clock, label: 'Open' },
-		'pending': { class: 'status-pending', icon: Clock, label: 'Pending' },
 		'assigned': { class: 'status-assigned', icon: CheckCircle, label: 'Assigned' },
 		'resolved': { class: 'status-resolved', icon: CheckCircle, label: 'Resolved' },
 		'closed': { class: 'status-closed', icon: XCircle, label: 'Closed' },
@@ -49,9 +50,9 @@
 
 <div class="filters">
 	<button class="filter-tab" class:active={filter === 'all'} onclick={() => filter = 'all'}>All ({inquiries.length})</button>
-	{#each ['open', 'pending', 'assigned', 'resolved', 'closed'] as s}
+	{#each ['open', 'assigned', 'resolved', 'closed'] as s}
 		<button class="filter-tab" class:active={filter === s} onclick={() => filter = s}>
-			{s.charAt(0).toUpperCase() + s.slice(1)} ({inquiries.filter((i: any) => i.status === s).length})
+			{s.charAt(0).toUpperCase() + s.slice(1)} ({inquiries.filter(i => i.status === s).length})
 		</button>
 	{/each}
 </div>
@@ -67,7 +68,7 @@
 				<div class="card-header">
 					<div class="card-title">
 						<span class="id-badge">#{i.inquiry_id}</span>
-						<span class="subject">{i.subject ?? i.message?.slice(0, 60) ?? 'Inquiry'}</span>
+						<span class="vehicle-name">{i.vehicle.brand} {i.vehicle.model}</span>
 						<span class="status-badge {statusConfig[i.status]?.class ?? 'status-open'}">
 							<svelte:component this={statusConfig[i.status]?.icon ?? Clock} size={12} />
 							{statusConfig[i.status]?.label ?? i.status}
@@ -80,9 +81,9 @@
 				<div class="card-body">
 					<p class="message">{i.message ?? 'No message.'}</p>
 				</div>
-				{#if i.status === 'open' || i.status === 'pending'}
-					<div class="card-actions">
-						<button class="btn-reply" onclick={() => replyModal = i}><Send size={14} /> Reply</button>
+				{#if i.vehicle.price}
+					<div class="card-footer">
+						<span class="price">{i.vehicle.price}</span>
 					</div>
 				{/if}
 			</div>
@@ -94,24 +95,20 @@
 	<div class="modal-overlay" onclick={() => replyModal = null}>
 		<div class="modal" onclick={(e) => e.stopPropagation()}>
 			<div class="modal-header">
-				<h2>Reply to Inquiry #{replyModal.inquiry_id}</h2>
+				<h2>Inquiry #{replyModal.inquiry_id}</h2>
 				<button class="modal-close" onclick={() => replyModal = null}><X size={20} /></button>
 			</div>
 			<div class="modal-body">
-				<div class="original-msg">
-					<strong>Original message:</strong>
-					<p>{replyModal.message}</p>
+				<div class="vehicle-info">
+					<strong>Vehicle:</strong> {replyModal.vehicle.brand} {replyModal.vehicle.model}
 				</div>
-				<div class="form-group">
-					<label for="reply-text">Your Reply</label>
-					<textarea id="reply-text" rows="5" bind:value={replyText} placeholder="Type your reply here..."></textarea>
+				<div class="original-msg">
+					<strong>Message:</strong>
+					<p>{replyModal.message}</p>
 				</div>
 			</div>
 			<div class="modal-footer">
-				<button class="btn-secondary" onclick={() => replyModal = null}>Cancel</button>
-				<button class="btn-primary" onclick={sendReply} disabled={!replyText.trim()}>
-					<Send size={16} /> Send Reply
-				</button>
+				<button class="btn-secondary" onclick={() => replyModal = null}>Close</button>
 			</div>
 		</div>
 	</div>
@@ -129,21 +126,19 @@
 	.inquiry-list { display:flex; flex-direction:column; gap:12px; }
 	.inquiry-card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; box-shadow:var(--shadow-sm); }
 	.card-header { display:flex; justify-content:space-between; align-items:flex-start; padding:14px 20px; background:var(--bg-muted); border-bottom:1px solid var(--border); }
-	.card-title { display:flex; align-items:center; gap:10px; }
+	.card-title { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 	.id-badge { font-family:monospace; font-size:11px; color:var(--primary); font-weight:700; background:var(--primary-bg); padding:2px 8px; border-radius:var(--radius-sm); }
-	.subject { font-weight:600; font-size:14px; color:var(--text-dark); }
+	.vehicle-name { font-weight:600; font-size:14px; color:var(--text-dark); }
 	.status-badge { display:inline-flex; align-items:center; gap:4px; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:600; }
 	.status-badge.status-open { background:#fef3c7; color:#92400e; }
-	.status-badge.status-pending { background:#dbeafe; color:#1e40af; }
 	.status-badge.status-assigned { background:#e0e7ff; color:#3730a3; }
 	.status-badge.status-resolved { background:#d1fae5; color:#065f46; }
 	.status-badge.status-closed { background:#f3f4f6; color:#6b7280; }
 	.card-meta .date { font-size:11px; color:var(--text-muted); }
 	.card-body { padding:14px 20px; }
 	.message { font-size:13px; color:var(--text-dark); line-height:1.5; margin:0; }
-	.card-actions { padding:10px 20px; border-top:1px solid var(--border-lighter); display:flex; gap:8px; }
-	.btn-reply { display:inline-flex; align-items:center; gap:6px; padding:6px 14px; background:var(--primary); color:var(--text-white); border:none; border-radius:var(--radius-sm); font-size:12px; font-weight:600; cursor:pointer; }
-	.btn-reply:hover { opacity:0.9; }
+	.card-footer { padding:10px 20px; border-top:1px solid var(--border-lighter); }
+	.price { font-size:13px; font-weight:600; color:var(--primary); }
 	.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:100; }
 	.modal { background:var(--bg-card); border-radius:var(--radius-lg); width:520px; max-width:90vw; box-shadow:var(--shadow-lg); }
 	.modal-header { display:flex; justify-content:space-between; align-items:center; padding:20px 24px; border-bottom:1px solid var(--border); }
@@ -155,10 +150,8 @@
 	.btn-secondary { padding:8px 16px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--bg-card); color:var(--text-dark); font-size:14px; font-weight:500; cursor:pointer; }
 	.btn-primary { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; background:var(--primary); color:var(--text-white); border:none; border-radius:var(--radius-md); font-size:14px; font-weight:600; cursor:pointer; }
 	.btn-primary:disabled { opacity:0.5; cursor:not-allowed; }
-	.original-msg { background:var(--bg-muted); padding:12px; border-radius:var(--radius-sm); margin-bottom:16px; }
+	.original-msg { background:var(--bg-muted); padding:12px; border-radius:var(--radius-sm); margin-top:12px; }
 	.original-msg strong { font-size:12px; color:var(--text-muted); }
 	.original-msg p { margin:6px 0 0; font-size:13px; color:var(--text-dark); }
-	.form-group { margin-bottom:16px; }
-	.form-group label { display:block; font-size:13px; font-weight:600; color:var(--text-dark); margin-bottom:6px; }
-	.form-group textarea { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-md); font-size:14px; background:var(--bg-card); color:var(--text-dark); resize:vertical; }
+	.vehicle-info { font-size:13px; color:var(--text-dark); }
 </style>

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getCustomerDashboard } from '$lib/services/api';
-	import { Car, Gauge, Fuel, Hash } from '@lucide/svelte';
+	import { getCustomerDashboard, resolvePhotoUrl } from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
+	import { Car, Gauge, Fuel, Cog, Users } from '@lucide/svelte';
 	import Loader from '$lib/components/Loader.svelte';
 
 	let vehicles = $state<Record<string, unknown>[]>([]);
@@ -12,7 +13,7 @@
 			const res = await getCustomerDashboard();
 			vehicles = res.data?.dashboard?.my_vehicles ?? [];
 		} catch {
-			// ignore
+			toast.error('Failed to load vehicles.');
 		} finally {
 			loading = false;
 		}
@@ -34,17 +35,21 @@
 			<div class="vehicle-card">
 				<div class="card-top">
 					<div class="vehicle-icon">
-						<Car size={40} />
+						{#if v.photo_url}
+							<img src={resolvePhotoUrl(v.photo_url as string)} alt="{v.brand ?? ''} {v.model ?? ''}" class="vehicle-photo" />
+						{:else}
+							<Car size={40} />
+						{/if}
 					</div>
 					<div class="vehicle-info">
 						<div class="vehicle-name">{v.brand ?? '—'} {v.model ?? '—'}</div>
 						<div class="vehicle-meta">
-							<span class="meta-chip"><Gauge size={12} /> {(v.mileage ?? '—') as string}</span>
 							<span class="meta-chip"><Fuel size={12} /> {(v.fuel_type ?? '—') as string}</span>
-							<span class="meta-chip"><Hash size={12} /> {(v.license_plate ?? '—') as string}</span>
+							<span class="meta-chip"><Cog size={12} /> {(v.transmission ?? '—') as string}</span>
+							<span class="meta-chip"><Users size={12} /> {v.seating_capacity ?? '—'} seater</span>
 						</div>
 					</div>
-					<span class="status-dot status-green"></span>
+					<span class="status-dot {v.status === 'delivered' || v.status === 'active' ? 'status-green' : 'status-yellow'}"></span>
 				</div>
 				<div class="card-body">
 					<div class="detail-row">
@@ -56,8 +61,20 @@
 						<span class="value">{v.color ?? '—'}</span>
 					</div>
 					<div class="detail-row">
+						<span class="label">Body Type</span>
+						<span class="value">{(v.body_type ?? '—') as string}</span>
+					</div>
+					<div class="detail-row">
 						<span class="label">VIN</span>
 						<span class="value vin">{(v.vin ?? '—') as string}</span>
+					</div>
+					<div class="detail-row">
+						<span class="label">Price</span>
+						<span class="value">₱{Number(v.price ?? 0).toLocaleString()}</span>
+					</div>
+					<div class="detail-row">
+						<span class="label">Status</span>
+						<span class="value">{(v.status ?? '—') as string}</span>
 					</div>
 				</div>
 			</div>
@@ -112,15 +129,21 @@
 		border-bottom: 1px solid var(--border);
 	}
 	.vehicle-icon {
-		width: 64px;
-		height: 64px;
-		background: var(--primary-bg);
+		width: 80px;
+		height: 60px;
+		background: var(--bg-card);
 		border-radius: var(--radius-sm);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		color: var(--primary);
 		flex-shrink: 0;
+		overflow: hidden;
+	}
+	.vehicle-photo {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
 	}
 	.vehicle-info {
 		flex: 1;
@@ -155,6 +178,9 @@
 	}
 	.status-dot.status-green {
 		background: #22c55e;
+	}
+	.status-dot.status-yellow {
+		background: #eab308;
 	}
 	.card-body {
 		padding: 16px 20px;

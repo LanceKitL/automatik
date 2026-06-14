@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { getCustomerPortalVehicles, resolvePhotoUrl } from '$lib/services/api';
 	import type { VehicleItem } from '$lib/services/api';
-	import { Search } from '@lucide/svelte';
+	import { toast } from 'svelte-sonner';
+	import { Search, ArrowUpDown } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 
@@ -13,6 +14,10 @@
 	let selectedTrans = $state('');
 	let selectedFuel = $state('');
 	let selectedBrand = $state('');
+	let selectedColor = $state('');
+	let selectedSeats = $state(0);
+	let selectedYear = $state(0);
+	let sortBy = $state('default');
 
 	let vehicleMinPrice = $state(0);
 	let vehicleMaxPrice = $state(99999999);
@@ -28,21 +33,33 @@
 	const transOptions = ['Manual', 'Automatic'];
 	const fuelOptions = ['Gasoline', 'Diesel'];
 	const brandOptions = ['BYD', 'Honda', 'Hyundai', 'Toyota'];
+	const colorOptions = ['Black', 'White', 'Red', 'Gray', 'Silver'];
+	const seatOptions = [4, 5, 6, 7];
+	const yearOptions = [2022, 2023, 2024, 2025, 2026];
 
 	let filtered = $derived(
-		vehicles.filter((v) => {
-			const q = search.toLowerCase();
-			if (q && !`${v.brand} ${v.model} ${v.year} ${v.color ?? ''} ${v.body_type ?? ''}`
-				.toLowerCase().includes(q)) return false;
-			if (selectedBody && (v.body_type ?? '').toLowerCase() !== selectedBody.toLowerCase()) return false;
-			if (selectedTrans && (v.transmission ?? '').toLowerCase() !== selectedTrans.toLowerCase()) return false;
-			if (selectedFuel && (v.fuel_type ?? '').toLowerCase() !== selectedFuel.toLowerCase()) return false;
-			if (selectedBrand && v.brand !== selectedBrand) return false;
-			const price = Number(v.price);
-			if (price < priceMin) return false;
-			if (price > priceMax) return false;
-			return true;
-		})
+		vehicles
+			.filter((v) => {
+				const q = search.toLowerCase();
+				if (q && !`${v.brand} ${v.model} ${v.year} ${v.color ?? ''} ${v.body_type ?? ''}`
+					.toLowerCase().includes(q)) return false;
+				if (selectedBody && (v.body_type ?? '').toLowerCase() !== selectedBody.toLowerCase()) return false;
+				if (selectedTrans && (v.transmission ?? '').toLowerCase() !== selectedTrans.toLowerCase()) return false;
+				if (selectedFuel && (v.fuel_type ?? '').toLowerCase() !== selectedFuel.toLowerCase()) return false;
+				if (selectedBrand && v.brand !== selectedBrand) return false;
+				if (selectedColor && (v.color ?? '').toLowerCase() !== selectedColor.toLowerCase()) return false;
+				if (selectedSeats && Number(v.seating_capacity) !== selectedSeats) return false;
+				if (selectedYear && Number(v.year) !== selectedYear) return false;
+				const price = Number(v.price);
+				if (price < priceMin) return false;
+				if (price > priceMax) return false;
+				return true;
+			})
+			.sort((a, b) => {
+				if (sortBy === 'price-asc') return Number(a.price ?? 0) - Number(b.price ?? 0);
+				if (sortBy === 'price-desc') return Number(b.price ?? 0) - Number(a.price ?? 0);
+				return 0;
+			})
 	);
 
 	onMount(async () => {
@@ -53,6 +70,10 @@
 		selectedTrans = url.searchParams.get('trans') || '';
 		selectedFuel = url.searchParams.get('fuel') || '';
 		selectedBrand = url.searchParams.get('brand') || '';
+		selectedColor = url.searchParams.get('color') || '';
+		selectedSeats = Number(url.searchParams.get('seats')) || 0;
+		selectedYear = Number(url.searchParams.get('year')) || 0;
+		sortBy = url.searchParams.get('sort') || 'default';
 		const urlPmin = url.searchParams.get('pmin');
 		const urlPmax = url.searchParams.get('pmax');
 
@@ -65,6 +86,7 @@
 			priceMin = urlPmin ? Number(urlPmin) : vehicleMinPrice;
 			priceMax = urlPmax ? Number(urlPmax) : vehicleMaxPrice;
 		} catch {
+			toast.error('Failed to load vehicles.');
 			vehicles = [];
 		} finally {
 			loading = false;
@@ -81,6 +103,10 @@
 		if (selectedTrans) params.set('trans', selectedTrans);
 		if (selectedFuel) params.set('fuel', selectedFuel);
 		if (selectedBrand) params.set('brand', selectedBrand);
+		if (selectedColor) params.set('color', selectedColor);
+		if (selectedSeats) params.set('seats', String(selectedSeats));
+		if (selectedYear) params.set('year', String(selectedYear));
+		if (sortBy !== 'default') params.set('sort', sortBy);
 		if (priceMin !== vehicleMinPrice) params.set('pmin', String(priceMin));
 		if (priceMax !== vehicleMaxPrice) params.set('pmax', String(priceMax));
 		const qs = params.toString();
@@ -165,26 +191,51 @@
 	</div>
 {/if}
 
-<div class="pills">
-	<button class="pill" class:active={selectedBody === ''} onclick={() => selectedBody = ''}>All Bodies</button>
-	{#each bodyOptions as b}
-		<button class="pill" class:active={selectedBody === b} onclick={() => selectedBody = b}>{b}</button>
-	{/each}
-	<span class="pill-sep" />
-	<button class="pill" class:active={selectedTrans === ''} onclick={() => selectedTrans = ''}>All Trans</button>
-	{#each transOptions as t}
-		<button class="pill" class:active={selectedTrans === t} onclick={() => selectedTrans = t}>{t}</button>
-	{/each}
-	<span class="pill-sep" />
-	<button class="pill" class:active={selectedFuel === ''} onclick={() => selectedFuel = ''}>All Fuel</button>
-	{#each fuelOptions as f}
-		<button class="pill" class:active={selectedFuel === f} onclick={() => selectedFuel = f}>{f}</button>
-	{/each}
-	<span class="pill-sep" />
-	<button class="pill" class:active={selectedBrand === ''} onclick={() => selectedBrand = ''}>All Brands</button>
-	{#each brandOptions as b}
-		<button class="pill" class:active={selectedBrand === b} onclick={() => selectedBrand = b}>{b}</button>
-	{/each}
+<div class="toolbar-row">
+	<div class="pills">
+		<button class="pill" class:active={selectedBody === ''} onclick={() => selectedBody = ''}>All Bodies</button>
+		{#each bodyOptions as b}
+			<button class="pill" class:active={selectedBody === b} onclick={() => selectedBody = b}>{b}</button>
+		{/each}
+		<span class="pill-sep" />
+		<button class="pill" class:active={selectedTrans === ''} onclick={() => selectedTrans = ''}>All Trans</button>
+		{#each transOptions as t}
+			<button class="pill" class:active={selectedTrans === t} onclick={() => selectedTrans = t}>{t}</button>
+		{/each}
+		<span class="pill-sep" />
+		<button class="pill" class:active={selectedFuel === ''} onclick={() => selectedFuel = ''}>All Fuel</button>
+		{#each fuelOptions as f}
+			<button class="pill" class:active={selectedFuel === f} onclick={() => selectedFuel = f}>{f}</button>
+		{/each}
+		<span class="pill-sep" />
+		<button class="pill" class:active={selectedBrand === ''} onclick={() => selectedBrand = ''}>All Brands</button>
+		{#each brandOptions as b}
+			<button class="pill" class:active={selectedBrand === b} onclick={() => selectedBrand = b}>{b}</button>
+		{/each}
+		<span class="pill-sep" />
+		<button class="pill" class:active={selectedColor === ''} onclick={() => selectedColor = ''}>All Colors</button>
+		{#each colorOptions as c}
+			<button class="pill" class:active={selectedColor === c} onclick={() => selectedColor = c}>{c}</button>
+		{/each}
+		<span class="pill-sep" />
+		<button class="pill" class:active={!selectedSeats} onclick={() => selectedSeats = 0}>All Seats</button>
+		{#each seatOptions as s}
+			<button class="pill" class:active={selectedSeats === s} onclick={() => selectedSeats = s}>{s}</button>
+		{/each}
+		<span class="pill-sep" />
+		<button class="pill" class:active={!selectedYear} onclick={() => selectedYear = 0}>All Years</button>
+		{#each yearOptions as y}
+			<button class="pill" class:active={selectedYear === y} onclick={() => selectedYear = y}>{y}</button>
+		{/each}
+	</div>
+	<div class="sort-wrap">
+		<ArrowUpDown size={13} />
+		<select class="sort-select" bind:value={sortBy}>
+			<option value="default">Default</option>
+			<option value="price-asc">Price: Low → High</option>
+			<option value="price-desc">Price: High → Low</option>
+		</select>
+	</div>
 </div>
 
 {#if loading}
@@ -388,8 +439,36 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 6px;
-		margin-bottom: 20px;
 		align-items: center;
+	}
+	.toolbar-row {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 12px;
+		margin-bottom: 20px;
+	}
+	.sort-wrap {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		color: var(--text-muted);
+		flex-shrink: 0;
+	}
+	.sort-select {
+		padding: 5px 10px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		background: var(--bg-card);
+		font-family: inherit;
+		font-size: 12px;
+		color: var(--text-dark);
+		outline: none;
+		cursor: pointer;
+	}
+	.sort-select:focus {
+		border-color: var(--blue);
 	}
 	.pill {
 		padding: 5px 12px;

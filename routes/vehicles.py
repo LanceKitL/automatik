@@ -27,7 +27,12 @@ from controllers.vehicleController import (
     updateVehiclePhoto,
     removePhoto,
     updateStatus,
-    indexLowStocks
+    indexLowStocks,
+    guestReserveVehicle,
+    guestPayReservationFee,
+    handleContactForm,
+    handleChatbot,
+    handleChatbotStatus,
 )
 
 vehicles_bp = Blueprint('vehicles', __name__)
@@ -56,6 +61,37 @@ def search():
 def get_vehicles(id):
     """Get full details of a single vehicle (including photos)."""
     return showVehicle(id)
+
+
+@vehicles_bp.route("/<int:id>/reserve", methods=["POST"])
+def reserve_vehicle(id):
+    """Public: guest reserves a vehicle."""
+    return guestReserveVehicle(id)
+
+
+@vehicles_bp.route("/<int:inquiry_id>/pay-reservation", methods=["POST"])
+def pay_reservation(inquiry_id):
+    """Public: guest pays reservation fee."""
+    return guestPayReservationFee(inquiry_id)
+
+
+@vehicles_bp.route("/contact", methods=["POST"])
+def contact():
+    """Public: submit contact form."""
+    return handleContactForm()
+
+
+@vehicles_bp.route("/chatbot", methods=["POST"])
+def chatbot():
+    """Public: chatbot message."""
+    return handleChatbot()
+
+
+@vehicles_bp.route("/chatbot/status", methods=["GET"])
+def chatbot_status():
+    """Public: check if chatbot is enabled."""
+    return handleChatbotStatus()
+
 
 # ── Admin: Vehicle CRUD ──────────────────────────────────────────────────
 

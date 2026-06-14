@@ -1,6 +1,9 @@
 from flask import request, jsonify, session
 from datetime import datetime
-from conn import run_query
+from conn import run_query, get_db
+from utils.log import audit_log
+from utils.notification import broadcast_notif
+from services.chatbot_service import ask
 
 # public / guest
 def getVehicles():
@@ -300,12 +303,12 @@ def deleteVehicleHandler(id):
         return jsonify({"message": "vehicle not found."}), 404
 
     run_query("""
-              DELETE FROM vehicles 
-              WHERE vehicle_id = %s 
+              UPDATE vehicles SET status = 'discontinued'
+              WHERE vehicle_id = %s
               """,
               (id,))
 
-    return jsonify({"message": f"vehicle {id} deleted successfully!"}), 200
+    return jsonify({"message": f"vehicle {id} has been removed from inventory."}), 200
 
 def updateStatus(vehicle_id):
     """
@@ -465,3 +468,176 @@ def indexLowStocks(threshold):
             "message": "Internal server error.",
             "error": str(e)
         }), 500
+
+
+RESERVATION_FEE = 5000.00
+
+
+def guestReserveVehicle(vehicle_id):
+    """Public: guest reserves a vehicle (no login required)."""
+    data = request.get_json(silent=True) or {}
+    guest_name = data.get("guest_name")
+    guest_email = data.get("guest_email")
+    guest_number = data.get("guest_number")
+
+    if not guest_name or not guest_email:
+        return jsonify({"message": "guest_name and guest_email are required."}), 400
+
+    vehicle = run_query(
+        "SELECT vehicle_id, status, brand, model FROM vehicles WHERE vehicle_id = %s",
+        (vehicle_id,), fetch="one"
+    )
+    if not vehicle:
+        return jsonify({"message": "Vehicle not found."}), 404
+    if vehicle["status"] in ("reserved", "sold"):
+        return jsonify({"message": "Vehicle is already reserved or sold."}), 400
+
+    conn, cursor = get_db()
+    try:
+        run_query(
+            "UPDATE vehicles SET status = 'reserved' WHERE vehicle_id = %s",
+            (vehicle_id,), conn=conn, cursor=cursor
+        )
+
+        inquiry_id = run_query("""
+            INSERT INTO inquiries (guest_name, guest_email, guest_number, vehicle_id, message, status)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (guest_name, guest_email, guest_number, vehicle_id,
+              "I would like to reserve this vehicle.", "open"),
+            conn=conn, cursor=cursor)
+
+        if not inquiry_id:
+            conn.rollback()
+            return jsonify({"message": "Failed to create reservation."}), 500
+
+        audit_log(None, "POST", "inquiries", inquiry_id, conn=conn, cursor=cursor)
+
+        broadcast_notif(
+            role="agent",
+            title="Vehicle Reserved (Guest)",
+            message=f"Guest {guest_name} reserved {vehicle['brand']} {vehicle['model']} (#{vehicle_id}).",
+            channel="in_app",
+            ref_type="inquiries",
+            ref_id=inquiry_id,
+        )
+
+        conn.commit()
+
+        return jsonify({
+            "message": "Vehicle reserved successfully!",
+            "inquiry_id": inquiry_id
+        }), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"message": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def guestPayReservationFee(inquiry_id):
+    """Public: guest pays the reservation fee (no login required)."""
+    data = request.get_json(silent=True) or {}
+    payment_method = data.get("payment_method", "online")
+
+    inquiry = run_query(
+        "SELECT inquiry_id FROM inquiries WHERE inquiry_id = %s",
+        (inquiry_id,), fetch="one"
+    )
+    if not inquiry:
+        return jsonify({"message": "Inquiry not found."}), 404
+
+    admin = run_query(
+        "SELECT user_id FROM users WHERE role = 'admin' ORDER BY user_id LIMIT 1",
+        fetch="one"
+    )
+    admin_id = admin['user_id'] if admin else 1
+
+    conn, cursor = get_db()
+    try:
+        payment_id = run_query("""
+            INSERT INTO payments (sale_id, amount_paid, payment_method, recorded_by, payment_allocation)
+            VALUES (NULL, %s, %s, %s, 'reservation_fee')
+        """, (RESERVATION_FEE, payment_method, admin_id), conn=conn, cursor=cursor)
+
+        if not payment_id:
+            conn.rollback()
+            return jsonify({"message": "Failed to record payment."}), 500
+
+        conn.commit()
+        return jsonify({"success": True, "payment_id": payment_id}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"message": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def handleContactForm():
+    """Public: submit a contact form message."""
+    data = request.get_json(silent=True) or {}
+    name = data.get("name", "").strip()
+    email = data.get("email", "").strip()
+    phone = data.get("phone", "").strip()
+    subject = data.get("subject", "").strip()
+    message = data.get("message", "").strip()
+
+    if not name or not email or not message:
+        return jsonify({"message": "Name, email, and message are required."}), 400
+
+    broadcast_notif(
+        role="admin",
+        title=f"Contact Form: {subject or 'No Subject'}",
+        message=f"From: {name} <{email}> | {phone or 'No phone'} — {message[:200]}",
+        channel="in_app",
+        ref_type="contact",
+        ref_id=0,
+    )
+
+    print(f"[CONTACT] {name} <{email}> {phone}: {message}")
+
+    return jsonify({"success": True, "message": "Message sent successfully!"}), 200
+
+
+def handleChatbotStatus():
+    """Public: check if chatbot is enabled."""
+    setting = run_query(
+        "SELECT setting_value FROM system_settings WHERE setting_key = 'chatbot_enabled'",
+        fetch="one"
+    )
+    if not setting:
+        run_query(
+            "INSERT IGNORE INTO system_settings (setting_key, setting_value, description) "
+            "VALUES ('chatbot_enabled', '1', 'Enable/disable the AutoBot chatbot')"
+        )
+        return jsonify({"enabled": True}), 200
+    return jsonify({"enabled": setting['setting_value'] not in ('0', 'false')}), 200
+
+
+def handleChatbot():
+    """Public: process a chatbot message via NVIDIA AI."""
+    data = request.get_json(silent=True) or {}
+    message = data.get("message", "").strip()
+    history = data.get("history", [])
+
+    if not message:
+        return jsonify({"response": "Please type a message."}), 400
+
+    # Check if chatbot is enabled
+    setting = run_query(
+        "SELECT setting_value FROM system_settings WHERE setting_key = 'chatbot_enabled'",
+        fetch="one"
+    )
+    if setting and setting['setting_value'] in ('0', 'false'):
+        return jsonify({
+            "response": "AutoBot is currently disabled. Please contact the dealership at **info@automatik.com** or visit our [Contact](/contact) page."
+        }), 200
+    if not setting:
+        run_query(
+            "INSERT IGNORE INTO system_settings (setting_key, setting_value, description) "
+            "VALUES ('chatbot_enabled', '1', 'Enable/disable the AutoBot chatbot')"
+        )
+
+    response = ask(message, history)
+    return jsonify({"response": response}), 200

@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getVehicleDetail, getTestDriveSlots, createBooking, reserveVehicle, resolvePhotoUrl, submitInquiry } from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
+	import { getVehicleDetail, getTestDriveSlots, createBooking, reserveVehicle, payReservationFee, resolvePhotoUrl, submitInquiry } from '$lib/services/api';
 	import type { VehicleItem, ServiceSlot } from '$lib/services/api';
 	import { ChevronLeft, ChevronRight, Car, MessageSquare, CheckCircle, Calculator } from '@lucide/svelte';
+	import CheckAnimation from '$lib/components/CheckAnimation.svelte';
 
 	let { params } = $props();
 
@@ -34,12 +36,29 @@
 	let selectedType = $state<AppointmentType | null>(null);
 
 	// Test Drive state
-	let tdDate = $state(new Date().toISOString().slice(0, 10));
-	let tdSlots = $state<ServiceSlot[]>([]);
+	let tdAllSlots = $state<ServiceSlot[]>([]);
 	let tdLoading = $state(false);
+	let tdSelectedDate = $state<string | null>(null);
 	let tdSelectedSlot = $state<number | null>(null);
 	let tdBooking = $state(false);
 	let tdDone = $state(false);
+	let showBookingModal = $state(false);
+	let tdBookingConfirming = $state(false);
+	let tdSelectedSlotObj = $derived(tdSlots.find(s => s.slot_id === tdSelectedSlot) ?? null);
+
+	let tdDateGroups = $derived.by(() => {
+		const map = new Map<string, ServiceSlot[]>();
+		for (const s of tdAllSlots) {
+			const dt = parseDT(s.slot_datetime);
+			if (isNaN(dt.getTime())) continue;
+			const key = dt.toISOString().slice(0, 10);
+			if (!map.has(key)) map.set(key, []);
+			map.get(key)!.push(s);
+		}
+		return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+	});
+
+	let tdSlots = $derived(tdSelectedDate ? (tdDateGroups.find(([d]) => d === tdSelectedDate)?.[1] ?? []) : []);
 
 	// Inquire state
 	let inquireMsg = $state('');
@@ -47,8 +66,9 @@
 	let inquireDone = $state(false);
 
 	// Reserve state
-	let reserveSending = $state(false);
-	let reserveDone = $state(false);
+	type ReserveState = 'idle' | 'reserving' | 'fee_modal' | 'paying' | 'success_modal' | 'done';
+	let reserveState = $state<ReserveState>('idle');
+	let inquiryId = $state<number | null>(null);
 
 	// Loan Calculator state
 	const INTEREST_RATE = 6.5;
@@ -80,46 +100,48 @@
 	function selectType(t: AppointmentType) {
 		if (vehicle?.status === 'reserved' && t !== 'reserve' && t !== 'inquire') return;
 		selectedType = t;
+		reserveState = 'idle';
+		inquiryId = null;
 		tdDone = false;
-		reserveDone = false;
 		inquireDone = false;
 		tdSelectedSlot = null;
-		tdSlots = [];
+		tdSelectedDate = null;
+		tdAllSlots = [];
 
 		if (t === 'test_drive') {
-			tdDate = new Date().toISOString().slice(0, 10);
-			fetchTdSlots();
+			fetchAllTdSlots();
 		}
 	}
 
-	async function fetchTdSlots() {
+	async function fetchAllTdSlots() {
 		tdLoading = true;
 		try {
-			const res = await getTestDriveSlots(tdDate, 'test_drive');
-			tdSlots = res.data;
+			const res = await getTestDriveSlots(undefined, 'test_drive');
+			tdAllSlots = res.data;
 		} catch {
-			tdSlots = [];
+			tdAllSlots = [];
 		} finally {
 			tdLoading = false;
 		}
 	}
 
-	function handleDateChange() {
-		if (selectedType === 'test_drive') {
-			fetchTdSlots();
-		}
+	function handleBook() {
+		if (!tdSelectedSlot || !vehicle) return;
+		showBookingModal = true;
 	}
 
-	async function handleBook() {
+	async function handleConfirmBooking() {
 		if (!tdSelectedSlot || !vehicle) return;
-		tdBooking = true;
+		tdBookingConfirming = true;
 		try {
 			await createBooking(tdSelectedSlot, vehicle.vehicle_id, 'test_drive');
+			showBookingModal = false;
 			tdDone = true;
+			toast.success('Test drive booked!');
 		} catch {
-			alert('Failed to book test drive.');
+			toast.error('Failed to book test drive.');
 		} finally {
-			tdBooking = false;
+			tdBookingConfirming = false;
 		}
 	}
 
@@ -129,8 +151,9 @@
 		try {
 			await submitInquiry(vehicle.vehicle_id, inquireMsg.trim());
 			inquireDone = true;
+			toast.success('An agent will follow up shortly.');
 		} catch {
-			alert('Failed to send inquiry.');
+			toast.error('Failed to send inquiry.');
 		} finally {
 			inquireSending = false;
 		}
@@ -138,25 +161,61 @@
 
 	async function handleReserve() {
 		if (!vehicle) return;
-		reserveSending = true;
+		reserveState = 'reserving';
 		try {
-			await reserveVehicle(vehicle.vehicle_id);
-			reserveDone = true;
+			const res = await reserveVehicle(vehicle.vehicle_id);
+			inquiryId = res.inquiry_id;
 			vehicle = { ...vehicle, status: 'reserved' };
-		} catch {
-			alert('Failed to reserve vehicle.');
-		} finally {
-			reserveSending = false;
+			reserveState = 'fee_modal';
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Failed to reserve vehicle.');
+			reserveState = 'idle';
 		}
+	}
+
+	async function handlePayFee() {
+		if (!inquiryId) return;
+		try {
+			await payReservationFee(inquiryId);
+			reserveState = 'paying';
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Payment failed.');
+		}
+	}
+
+	function handlePaymentDone() {
+		reserveState = 'success_modal';
 	}
 
 	function formatPrice(p: string) {
 		return `₱${Number(p).toLocaleString()}`;
 	}
 
+	function parseDT(iso: string) {
+		const s = String(iso);
+		if (s.includes('Z') || s.includes('+') || s.endsWith('GMT') || s.endsWith('UTC')) {
+			return new Date(s);
+		}
+		if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s);
+		return new Date(s.replace(' ', 'T') + '+08:00');
+	}
+
 	function formatDate(iso: string) {
-		const d = new Date(iso);
+		const d = parseDT(iso);
+		if (isNaN(d.getTime())) return '—';
 		return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+	}
+
+	function formatDateShort(iso: string) {
+		const d = parseDT(iso);
+		if (isNaN(d.getTime())) return '—';
+		return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+	}
+
+	function formatTime(iso: string) {
+		const d = parseDT(iso);
+		if (isNaN(d.getTime())) return '—';
+		return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 	}
 </script>
 
@@ -242,28 +301,43 @@
 						{#if tdDone}
 							<p class="done">Test drive booked! You'll receive a confirmation.</p>
 						{:else}
-							<label>
-								Select Date
-								<input type="date" bind:value={tdDate} onchange={handleDateChange} />
-							</label>
-
 							{#if tdLoading}
-								<p class="hint">Loading available slots…</p>
-							{:else if tdSlots.length === 0}
-								<p class="hint">No available test drive slots on this date.</p>
+								<p class="hint">Loading available dates…</p>
+							{:else if tdDateGroups.length === 0}
+								<p class="hint">No test drive slots are currently available. Please check back later or contact the dealership.</p>
 							{:else}
-								<div class="slot-list">
-									{#each tdSlots as s}
+								<p class="section-label">Select a date</p>
+								<div class="date-group-list">
+									{#each tdDateGroups as [date, slots]}
 										<button
-											class="slot-item"
-											class:selected={tdSelectedSlot === s.slot_id}
-											onclick={() => tdSelectedSlot = s.slot_id}
+											class="date-chip"
+											class:selected={tdSelectedDate === date}
+											onclick={() => {
+												tdSelectedDate = date;
+												tdSelectedSlot = null;
+											}}
 										>
-											{formatDate(s.slot_datetime)}
-											<span class="remaining">{s.remaining} slot{s.remaining !== 1 ? 's' : ''} left</span>
+											<span class="date-label">{formatDateShort(date)}</span>
+											<span class="slot-count">{slots.length} slot{slots.length !== 1 ? 's' : ''}</span>
 										</button>
 									{/each}
 								</div>
+
+								{#if tdSelectedDate && tdSlots.length > 0}
+									<p class="section-label">Select a time for {formatDateShort(tdSelectedDate)}</p>
+									<div class="slot-list">
+										{#each tdSlots as s}
+											<button
+												class="slot-item"
+												class:selected={tdSelectedSlot === s.slot_id}
+												onclick={() => tdSelectedSlot = s.slot_id}
+											>
+												{formatTime(s.slot_datetime)}
+												<span class="remaining">{s.remaining} slot{s.remaining !== 1 ? 's' : ''} left</span>
+											</button>
+										{/each}
+									</div>
+								{/if}
 							{/if}
 
 							<button class="book-btn" onclick={handleBook} disabled={!tdSelectedSlot || tdBooking}>
@@ -297,15 +371,17 @@
 				<!-- Reserve -->
 				{#if selectedType === 'reserve'}
 					<div class="booking-form">
-						{#if reserveDone}
+						{#if reserveState === 'done'}
 							<p class="done">Vehicle reserved! An agent will follow up.</p>
 						{:else if vehicle.status === 'reserved'}
 							<p class="hint">This vehicle is already reserved.</p>
-						{:else}
+						{:else if reserveState === 'idle'}
 							<p class="confirm-text">Are you sure you want to reserve the {vehicle.brand} {vehicle.model}?</p>
-							<button class="book-btn reserve-btn" onclick={handleReserve} disabled={reserveSending}>
-								{reserveSending ? 'Reserving…' : 'Confirm Reserve'}
+							<button class="book-btn reserve-btn" onclick={handleReserve}>
+								Confirm Reserve
 							</button>
+						{:else if reserveState === 'reserving'}
+							<p class="hint">Reserving…</p>
 						{/if}
 					</div>
 				{/if}
@@ -367,6 +443,92 @@
 			</div>
 		</div>
 	</div>
+
+	<!-- Test Drive Confirmation Modal -->
+	{#if showBookingModal && tdSelectedSlotObj}
+		<div class="modal-overlay" onclick={() => showBookingModal = false} />
+		<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
+			<div class="modal-header">
+				<h3>Confirm Test Drive</h3>
+				<button class="modal-close" onclick={() => showBookingModal = false}>×</button>
+			</div>
+			<div class="modal-body">
+				<p class="td-datetime">{formatDate(tdSelectedSlotObj.slot_datetime)}</p>
+				<div class="reminder-box">
+					<strong>Please remember to bring:</strong>
+					<ul>
+						<li>Valid Driver's Licence</li>
+					</ul>
+				</div>
+				<div class="policy-box">
+					<strong>Test Drive Policy:</strong>
+					<ul>
+						<li>A valid Driver's Licence is required.</li>
+						<li>You must be at least 18 years old.</li>
+						<li>Test drive is limited to the designated route around the dealership.</li>
+						<li>A dealership representative will accompany you during the test drive.</li>
+						<li>The customer is responsible for any traffic violations incurred during the test drive.</li>
+					</ul>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" onclick={() => showBookingModal = false}>Cancel</button>
+				<button class="btn-primary" onclick={handleConfirmBooking} disabled={tdBookingConfirming}>
+					{tdBookingConfirming ? 'Booking…' : 'Confirm Booking'}
+				</button>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Reservation Fee Modal -->
+	{#if reserveState === 'fee_modal' && vehicle}
+		<div class="modal-overlay" onclick={() => reserveState = 'done'} />
+		<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
+			<div class="modal-header">
+				<h3>Reservation Fee Required</h3>
+				<button class="modal-close" onclick={() => reserveState = 'done'}>×</button>
+			</div>
+			<div class="modal-body">
+				<p>To confirm your reservation for the <strong>{vehicle.brand} {vehicle.model}</strong>, a reservation fee of <strong>₱5,000.00</strong> is required.</p>
+				<p class="fee-note">You can pay this fee online now or at the dealership.</p>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" onclick={() => reserveState = 'done'}>Pay Later</button>
+				<button class="btn-primary" onclick={handlePayFee}>Pay ₱5,000</button>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Payment Animation -->
+	{#if reserveState === 'paying'}
+		<CheckAnimation onAnimationEnd={handlePaymentDone} />
+	{/if}
+
+	<!-- Success Modal -->
+	{#if reserveState === 'success_modal' && vehicle}
+		<div class="modal-overlay" onclick={() => reserveState = 'done'} />
+		<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
+			<div class="modal-header success-header">
+				<h3>Reservation Complete!</h3>
+			</div>
+			<div class="modal-body">
+				<div class="success-icon">✓</div>
+				<p>Your reservation for the <strong>{vehicle.brand} {vehicle.model}</strong> is confirmed.</p>
+				<p>You may visit the dealership at any time. An agent will be ready to assist you.</p>
+				<div class="reminder-box">
+					<strong>Please remember to bring:</strong>
+					<ul>
+						<li>Valid Driver's Licence</li>
+						<li>Proof of Billing &amp; Address</li>
+						<li>Government Issued ID</li>
+					</ul>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-primary" onclick={() => reserveState = 'done'}>Done</button>
+			</div>
+		</div>
+	{/if}
 {/if}
 
 <style>
@@ -616,6 +778,49 @@
 		color: var(--text-dark);
 		margin: 0 0 12px;
 	}
+	.section-label {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-dark);
+		margin: 12px 0 6px;
+	}
+	.date-group-list {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		margin: 8px 0;
+		max-height: 200px;
+		overflow-y: auto;
+	}
+	.date-chip {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 10px 12px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		background: var(--bg-card);
+		font-size: 13px;
+		font-family: inherit;
+		cursor: pointer;
+		text-align: left;
+		transition: all 0.15s;
+		color: var(--text-dark);
+	}
+	.date-chip:hover {
+		border-color: var(--blue);
+	}
+	.date-chip.selected {
+		border-color: var(--blue);
+		background: var(--blue-bg);
+	}
+	.date-label {
+		font-weight: 600;
+	}
+	.slot-count {
+		font-size: 11px;
+		color: var(--text-muted);
+	}
 	.slot-list {
 		display: flex;
 		flex-direction: column;
@@ -785,5 +990,154 @@
 		height: 1px;
 		background: var(--border);
 		margin: 2px 0;
+	}
+
+	/* Modal styles */
+	.modal-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0,0,0,0.4);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 100;
+	}
+	.modal {
+		position: fixed;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		background: var(--bg-card);
+		border-radius: var(--radius-lg);
+		width: 440px;
+		max-width: 90vw;
+		box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+		z-index: 101;
+	}
+	.modal-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 20px 24px 0;
+	}
+	.modal-header h3 {
+		font-size: 18px;
+		font-weight: 700;
+		color: var(--text-dark);
+		margin: 0;
+	}
+	.modal-header.success-header {
+		justify-content: center;
+		padding-top: 32px;
+	}
+	.modal-close {
+		background: none;
+		border: none;
+		font-size: 24px;
+		color: var(--text-muted);
+		cursor: pointer;
+		padding: 0;
+		line-height: 1;
+	}
+	.modal-body {
+		padding: 16px 24px 8px;
+		font-size: 14px;
+		color: var(--text-dark);
+		line-height: 1.5;
+	}
+	.modal-body p {
+		margin: 0 0 10px;
+	}
+	.fee-note {
+		font-size: 13px;
+		color: var(--text-muted);
+	}
+	.success-icon {
+		width: 56px;
+		height: 56px;
+		border-radius: 50%;
+		background: #d1fae5;
+		color: #059669;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 28px;
+		font-weight: 700;
+		margin: 0 auto 16px;
+	}
+	.td-datetime {
+		font-size: 16px;
+		font-weight: 700;
+		text-align: center;
+		margin-bottom: 16px;
+		color: var(--text-dark);
+	}
+	.reminder-box {
+		background: #fef3c7;
+		border-radius: var(--radius-md);
+		padding: 12px 16px;
+		margin-top: 12px;
+		font-size: 13px;
+		color: #92400e;
+		line-height: 1.5;
+	}
+	.reminder-box ul {
+		margin: 6px 0 0;
+		padding-left: 18px;
+	}
+	.reminder-box li {
+		margin-bottom: 2px;
+	}
+	.policy-box {
+		background: #e0f2fe;
+		border-radius: var(--radius-md);
+		padding: 12px 16px;
+		margin-top: 12px;
+		font-size: 13px;
+		color: #075985;
+		line-height: 1.5;
+	}
+	.policy-box ul {
+		margin: 6px 0 0;
+		padding-left: 18px;
+	}
+	.policy-box li {
+		margin-bottom: 3px;
+	}
+	.modal-footer {
+		display: flex;
+		gap: 10px;
+		justify-content: flex-end;
+		padding: 16px 24px 24px;
+	}
+	.btn-primary {
+		padding: 10px 24px;
+		border: none;
+		border-radius: var(--radius-md);
+		background: #059669;
+		color: #fff;
+		font-size: 14px;
+		font-weight: 600;
+		font-family: inherit;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+	.btn-primary:hover {
+		background: #047857;
+	}
+	.btn-secondary {
+		padding: 10px 24px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		background: var(--bg-card);
+		color: var(--text-dark);
+		font-size: 14px;
+		font-weight: 500;
+		font-family: inherit;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+	.btn-secondary:hover {
+		background: var(--bg-hover);
 	}
 </style>

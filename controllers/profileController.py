@@ -1,5 +1,5 @@
 from flask import session,request,jsonify
-from conn import run_query
+from conn import run_query, get_db
 
 
 def get_profile():
@@ -57,27 +57,28 @@ def update_profile():
     updated_fields = []
 
     # -------------------------
-    # Update user_profile
+    # Update user_profile (upsert)
     # -------------------------
-    profile_updates = []
-    profile_params = []
+    profile_columns = []
+    profile_values = []
 
     for field, value in profile_fields.items():
         if value is not None:
-            profile_updates.append(f"{field} = %s")
-            profile_params.append(value)
+            profile_columns.append(field)
+            profile_values.append(value)
             updated_fields.append(field)
 
-    if profile_updates:
-        profile_params.append(user_id)
+    if profile_columns:
+        columns_str = ', '.join(profile_columns + ['user_id'])
+        placeholders = ', '.join(['%s'] * (len(profile_columns) + 1))
+        update_set = ', '.join([f"{col} = VALUES({col})" for col in profile_columns])
 
         sql = f"""
-            UPDATE user_profile
-            SET {', '.join(profile_updates)}
-            WHERE user_id = %s
+            INSERT INTO user_profile ({columns_str})
+            VALUES ({placeholders})
+            ON DUPLICATE KEY UPDATE {update_set}
         """
-
-        run_query(sql, profile_params)
+        run_query(sql, tuple(profile_values + [user_id]))
 
     # -------------------------
     # Update customer_details

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { toast } from 'svelte-sonner';
   import { getAgentDashboard } from '$lib/services/api';
   import type { AgentDashboardResponse } from '$lib/services/api';
   import Chart from 'chart.js/auto';
@@ -142,8 +143,9 @@
     try {
       const res = await getAgentDashboard();
       data = res.data;
-    } catch { /* offline */ }
-    finally { loading = false; }
+    } catch {
+      toast.error('Failed to load dashboard.');
+    } finally { loading = false; }
 
     await tick();
     buildCharts();
@@ -156,6 +158,7 @@
   <div class="top-bar">
     <div class="title-row">
       <h1>Agent Dashboard</h1>
+      <p class="subtitle">Monitor and track customers repair booking.</p>
     </div>
     <span class="timestamp">{timestamp}</span>
   </div>
@@ -344,11 +347,16 @@
 </div>
 
 <style>
-  .page { font-family: var(--font-sans); padding: 1.5rem 1.5rem; max-width: 1500px; margin: 0 auto; }
+  .page { font-family: var(--font-sans); padding: 2rem; max-width: 1500px; margin: 0 auto; }
 
   /* Top bar */
   .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; flex-wrap: wrap; gap: 10px; }
-  .title-row { display: flex; align-items: center; gap: 10px; }
+  .title-row { display: flex; flex-direction: column; align-items: start; justify-content: start; margin-bottom: 10px; gap: 10px; }
+	.subtitle {
+		font-size: 14px;
+		color: var(--text-muted);
+		margin-top: 4px;
+	}
   .logo-badge { width: 36px; height: 36px; background: var(--primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 700; color: var(--accent); flex-shrink: 0; }
   h1 { font-size: 20px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; margin: 0; }
   .timestamp { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); background: var(--bg-muted); border: 0.5px solid var(--border); padding: 4px 12px; border-radius: 20px; }

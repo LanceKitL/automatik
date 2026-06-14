@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import { getInquiries } from '$lib/services/api';
 	import type { InquiryItem } from '$lib/services/api';
 	import InquiryDrawer from './InquiryDrawer.svelte';
+	import { Search, MessageCircle, Clock, UserCheck, CheckCircle, Archive } from '@lucide/svelte';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -46,11 +48,14 @@
 	);
 
 	async function loadInquiries() {
+		loading = true;
+		error = null;
 		try {
 			const res = await getInquiries();
 			rows = Array.isArray(res) ? (res as InquiryItem[]) : [];
 		} catch (e) {
-			error = (e as Error).message;
+			toast.error((e as Error).message || 'Failed to load inquiries.');
+			error = null;
 		} finally {
 			loading = false;
 		}
@@ -69,7 +74,6 @@
 	async function onInquiryUpdated() {
 		selectedInquiry = null;
 		showDrawer = false;
-		loading = true;
 		await loadInquiries();
 	}
 
@@ -82,22 +86,27 @@
 		const d = new Date(dateStr);
 		return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 	}
+
+	function filterLabel(f: string): string {
+		return f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1);
+	}
 </script>
 
 <div class="page">
 	<!-- Top bar -->
 	<div class="top-bar">
 		<div class="title-row">
-			<h1>Inquiries</h1>
+			<div>
+				<h1>Inquiries</h1>
+				<p class="title-subtitle">Review and manage customer inquiries</p>
+			</div>
 		</div>
 		<div class="toolbar">
 			<div class="search-wrap">
-				<svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-				</svg>
+				<Search class="search-icon" size={14} />
 				<input
-					class="search-input"
 					type="text"
+					class="search-input"
 					placeholder="Search by name, email, message, or ID…"
 					bind:value={search}
 				/>
@@ -108,24 +117,39 @@
 	<!-- Mini stats -->
 	<div class="stats-row">
 		<div class="mini-stat s-total">
-			<span class="mini-val">{stats.total}</span>
-			<span class="mini-lbl">Total</span>
+			<MessageCircle size={18} />
+			<div>
+				<span class="mini-val">{stats.total}</span>
+				<span class="mini-lbl">Total</span>
+			</div>
 		</div>
 		<div class="mini-stat s-open">
-			<span class="mini-val">{stats.open}</span>
-			<span class="mini-lbl">Open</span>
+			<Clock size={18} />
+			<div>
+				<span class="mini-val">{stats.open}</span>
+				<span class="mini-lbl">Open</span>
+			</div>
 		</div>
 		<div class="mini-stat s-assigned">
-			<span class="mini-val">{stats.assigned}</span>
-			<span class="mini-lbl">Assigned</span>
+			<UserCheck size={18} />
+			<div>
+				<span class="mini-val">{stats.assigned}</span>
+				<span class="mini-lbl">Assigned</span>
+			</div>
 		</div>
 		<div class="mini-stat s-resolved">
-			<span class="mini-val">{stats.resolved}</span>
-			<span class="mini-lbl">Resolved</span>
+			<CheckCircle size={18} />
+			<div>
+				<span class="mini-val">{stats.resolved}</span>
+				<span class="mini-lbl">Resolved</span>
+			</div>
 		</div>
 		<div class="mini-stat s-closed">
-			<span class="mini-val">{stats.closed}</span>
-			<span class="mini-lbl">Closed</span>
+			<Archive size={18} />
+			<div>
+				<span class="mini-val">{stats.closed}</span>
+				<span class="mini-lbl">Closed</span>
+			</div>
 		</div>
 	</div>
 
@@ -135,48 +159,38 @@
 			<button
 				class="filter-btn"
 				class:active={activeFilter === f}
-				onclick={() => activeFilter = f}
+				onclick={() => (activeFilter = f)}
 			>
-				{f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+				{filterLabel(f)}
 			</button>
 		{/each}
 	</div>
 
-	<!-- Loading state -->
+	<!-- Loading / Error / Empty / Table -->
 	{#if loading}
 		<div class="loading-state">
-			<span class="spinner"></span>
-			<p>Loading inquiries…</p>
+			<div class="spinner"></div>
+			<span>Loading inquiries…</span>
 		</div>
-	<!-- Error state -->
 	{:else if error}
-		<div class="error-msg">
-			<p>{error}</p>
-		</div>
-	<!-- Table -->
+		<div class="error-msg">{error}</div>
+	{:else if filteredRows.length === 0}
+		<div class="empty-state">No inquiries found.</div>
 	{:else}
 		<DataTable columns={columns}>
 			{#each filteredRows as row (row.inquiry_id)}
-				<tr class="clickable-row" onclick={() => openDrawer(row)}>
-					<td class="cell-id">#{row.inquiry_id}</td>
-					<td class="cell-contact">
+				<tr class="clickable" onclick={() => openDrawer(row)}>
+					<td><span class="cell-id">#{row.inquiry_id}</span></td>
+					<td class="cell-name">
 						<span class="contact-name">{row.contacts.name ?? 'Guest'}</span>
 						<span class="contact-email">{row.contacts.email ?? '—'}</span>
 					</td>
-					<td class="cell-vehicle">
-						{row.vehicle.brand} {row.vehicle.model}
-					</td>
+					<td class="cell-vehicle">{row.vehicle.brand} {row.vehicle.model}</td>
 					<td>
 						<span class="badge badge-{row.status}">{row.status}</span>
 					</td>
 					<td class="cell-date">{formatDate(row.created_at)}</td>
-					<td class="cell-agent">
-						{row.agent_name ?? '—'}
-					</td>
-				</tr>
-			{:else}
-				<tr>
-					<td colspan="6" class="empty-state">No inquiries found.</td>
+					<td class="cell-agent">{row.agent_name ?? '—'}</td>
 				</tr>
 			{/each}
 		</DataTable>
@@ -191,93 +205,66 @@
 />
 
 <style>
-	.page {
-    font-family: var(--font-sans); 
-	padding: 2rem 1.5rem; 
-	max-width: 1500px; 
-	margin: 0 auto;
-	}
+	@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
-	/* ── Top bar ────────────────────────────────── */
-	.top-bar { margin-bottom: 1.5rem; }
-	.title-row h1 { margin: 0 0 1rem; font-size: 1.5rem; color: var(--text-primary); }
-	.toolbar { display: flex; align-items: center; gap: 0.75rem; }
-	.search-wrap {
-		position: relative; flex: 1; max-width: 28rem;
-	}
-	.search-icon {
-		position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%);
-		color: var(--text-muted); pointer-events: none;
-	}
-	.search-input {
-		width: 100%; padding: 0.55rem 0.75rem 0.55rem 2.25rem;
-		border: 1px solid #d1d5db; border-radius: var(--radius-sm); font-size: 0.875rem;
-		background: var(--bg-card);
-	}
-	.search-input:focus { outline: none; border-color: var(--primary-light); box-shadow: 0 0 0 2px rgba(124,157,247,0.15); }
+	.page { font-family: 'Syne', sans-serif; padding: 2rem 1.5rem; max-width: 1500px; margin: 0 auto; }
 
-	/* ── Mini stats ─────────────────────────────── */
-	.stats-row {
-		display: flex; gap: 1rem; margin-bottom: 1.25rem;
-	}
-	.mini-stat {
-		flex: 1; padding: 1rem 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--border);
-		background: var(--bg-card); position: relative; overflow: hidden;
-	}
-	.mini-stat::before {
-		content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%;
-	}
-	.mini-val { display: block; font-size: 1.75rem; font-weight: 700; line-height: 1.1; }
-	.mini-lbl { font-size: 0.8rem; color: var(--text-light); margin-top: 0.25rem; display: block; }
-	.s-total::before { background: var(--text-light); }
-	.s-open::before { background: var(--primary-light); }
-	.s-assigned::before { background: var(--accent); }
-	.s-resolved::before { background: #6de0b0; }
-	.s-closed::before { background: var(--text-muted); }
+	/* Top bar */
+	.top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; flex-wrap: wrap; gap: 10px; }
+	.title-row { display: flex; align-items: center; gap: 10px; }
+	.title-subtitle { font-size: 13px; color: #9ca3af; margin: 2px 0 0; font-weight: 400; }
+	h1 { font-size: 20px; font-weight: 700; color: #1a1a2e; letter-spacing: -0.5px; margin: 0; }
+	.toolbar { display: flex; align-items: center; gap: 10px; }
+	.search-wrap { position: relative; }
+	.search-wrap :global(.search-icon) { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none; }
+	.search-input { height: 34px; padding: 0 12px 0 32px; border: 0.5px solid #e5e7eb; border-radius: 8px; font-family: 'Syne', sans-serif; font-size: 12px; color: #1a1a2e; background: #f9fafb; outline: none; width: 220px; }
+	.search-input:focus { border-color: #7c9df7; background: #fff; }
 
-	/* ── Filter pills ────────────────────────────── */
-	.filter-row { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
-	.filter-btn {
-		padding: 0.4rem 0.9rem; font-size: 0.8rem; font-weight: 500;
-		border: 1px solid #d1d5db; border-radius: 20px; background: var(--bg-card);
-		color: var(--text-dark); cursor: pointer; transition: all 0.15s;
-	}
-	.filter-btn.active {
-		background: var(--primary); color: var(--accent); border-color: var(--primary);
-	}
-	.filter-btn:hover:not(.active) { border-color: var(--primary-light); color: var(--primary-light); }
+	/* Mini stats */
+	.stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 1.25rem; }
+	.mini-stat { background: #f8f7f4; border-radius: 10px; padding: .75rem 1rem; display: flex; align-items: center; gap: 10px; }
+	.s-total :global(svg) { color: #1a1a2e; flex-shrink: 0; }
+	.s-open :global(svg) { color: #4f46e5; flex-shrink: 0; }
+	.s-assigned :global(svg) { color: #b45309; flex-shrink: 0; }
+	.s-resolved :global(svg) { color: #059669; flex-shrink: 0; }
+	.s-closed :global(svg) { color: #9ca3af; flex-shrink: 0; }
+	.mini-stat div { display: flex; flex-direction: column; }
+	.mini-val { font-size: 20px; font-weight: 700; color: #1a1a2e; letter-spacing: -0.5px; line-height: 1; }
+	.mini-lbl { font-size: 10px; font-weight: 500; color: #9ca3af; letter-spacing: 0.6px; text-transform: uppercase; margin-top: 2px; }
 
-	/* ── Table styling ──────────────────────────── */
-	:global(table) { font-size: 0.85rem; }
-	.clickable-row { cursor: pointer; transition: background 0.1s; }
-	.clickable-row:hover { background: var(--primary-bg); }
-  .cell-id { font-family: var(--font-mono); font-weight: 600; color: var(--primary-light); }
-	.cell-contact { display: flex; flex-direction: column; gap: 0.15rem; }
-	.contact-name { font-weight: 600; color: var(--text-primary); }
-	.contact-email { font-size: 0.75rem; color: var(--text-muted); }
-	.cell-vehicle { font-weight: 500; }
-	.cell-date { font-size: 0.8rem; color: var(--text-light); }
-	.cell-agent { font-size: 0.8rem; }
+	/* Filter pills */
+	.filter-row { display: flex; gap: 6px; margin-bottom: 1rem; flex-wrap: wrap; }
+	.filter-btn { height: 28px; padding: 0 12px; border: 0.5px solid #e5e7eb; border-radius: 20px; background: #f9fafb; font-family: 'Syne', sans-serif; font-size: 11px; color: #6b7280; cursor: pointer; transition: .15s; }
+	.filter-btn.active { background: #1a1a2e; color: #e8c97e; border-color: #1a1a2e; }
 
-	/* ── Status badges ──────────────────────────── */
-	:global(.badge) {
-		display: inline-block; padding: 2px 10px; border-radius: 12px;
-		font-size: 0.7rem; font-weight: 600; text-transform: capitalize;
-	}
-	:global(.badge-open) { background: #eef2ff; color: #4f46e5; }
-	:global(.badge-assigned) { background: var(--warning-bg-light); color: var(--warning); }
-	:global(.badge-resolved) { background: #ecfdf5; color: #059669; }
-	:global(.badge-closed) { background: var(--bg-hover); color: var(--text-light); }
-
-	/* ── States ──────────────────────────────────── */
-	.loading-state { display: flex; align-items: center; gap: 0.75rem; padding: 2rem; color: var(--text-light); }
-	.spinner {
-		width: 1.25rem; height: 1.25rem; border: 2px solid var(--border);
-		border-top-color: var(--primary-light); border-radius: 50%; animation: spin 0.6s linear infinite;
-	}
+	/* Loading & Error */
+	.loading-state { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 3rem; color: #9ca3af; font-size: 13px; }
+	.spinner { width: 24px; height: 24px; border: 2px solid #e5e7eb; border-top-color: #1a1a2e; border-radius: 50%; animation: spin .7s linear infinite; }
 	@keyframes spin { to { transform: rotate(360deg); } }
-	.error-msg {
-		background: var(--danger-bg); color: var(--danger); padding: 1rem; border-radius: var(--radius-sm); margin: 1rem 0;
+	.error-msg { color: #A32D2D; font-size: 13px; padding: 1rem; background: #FCEBEB; border-radius: 8px; margin-bottom: 1rem; }
+	.empty-state { text-align: center; padding: 2.5rem; color: #9ca3af; font-size: 13px; }
+
+	/* Table cells */
+	.cell-id { font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 600; color: #7c9df7; }
+	.cell-name { font-size: 13px; font-weight: 600; color: #1a1a2e; }
+	.contact-name { font-weight: 600; color: #1a1a2e; }
+	.contact-email { font-size: 10px; color: #9ca3af; display: block; margin-top: 1px; }
+	.cell-vehicle { font-size: 12px; color: #374151; }
+	.cell-date { font-size: 12px; color: #6b7280; }
+	.cell-agent { font-size: 12px; color: #6b7280; }
+
+	.clickable { cursor: pointer; transition: background .1s; }
+	.clickable:hover { background: #f9fafb; }
+
+	/* Status badges */
+	.badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: 10px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; }
+	.badge-open { background: #eef2ff; color: #4f46e5; }
+	.badge-assigned { background: #fef3c7; color: #b45309; }
+	.badge-resolved { background: #ecfdf5; color: #059669; }
+	.badge-closed { background: #f3f4f6; color: #6b7280; }
+
+	@media (max-width: 640px) {
+		.stats-row { grid-template-columns: 1fr 1fr; }
+		.top-bar { flex-direction: column; align-items: flex-start; }
 	}
-	.empty-state { text-align: center; padding: 2rem; color: var(--text-muted); font-style: italic; }
 </style>

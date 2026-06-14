@@ -28,7 +28,13 @@
 	});
 </script>
 
-<h1>Loans</h1>
+<div class="page">
+<div class="title-row">
+	<div>
+		<h1>Loans</h1>
+		<p class="title-subtitle">View and manage customer loan applications</p>
+	</div>
+</div>
 {#if loading}
 	<p>Loading…</p>
 {:else if error}
@@ -47,3 +53,12 @@
 		{/each}
 	</DataTable>
 {/if}
+</div>
+
+<style>
+	.page { padding: 2rem 1.5rem; max-width: 1200px; margin: 0 auto; font-family: var(--font-sans); }
+	.title-row { display: flex; align-items: center; gap: 10px; margin-bottom: 1.5rem; }
+	.title-subtitle { font-size: 13px; color: #9ca3af; margin: 2px 0 0; font-weight: 400; }
+	h1 { font-size: 24px; font-weight: 700; color: #1a1a2e; margin: 0; }
+	.error { color: #dc2626; font-size: 13px; }
+</style>

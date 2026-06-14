@@ -4,7 +4,7 @@ Admin routes — user, agent, and customer management.
 All endpoints require admin role.
 """
 
-from flask import Blueprint
+from flask import Blueprint, request, jsonify
 from validators.middleware import role_required, logged_in_required
 from controllers.adminController import (
     adminDashboard,
@@ -31,6 +31,7 @@ from controllers.adminController import (
 from controllers.serviceController import (
     listAllBookingsHandler,
     updateBookingStatusHandler,
+    deleteBookingHandler,
     listAllWarrantyClaimsHandler,
     getWarrantyClaimDetailHandler,
     updateWarrantyStatusHandler,
@@ -219,6 +220,26 @@ def index_bookings():
 @role_required("admin")
 def confirm_booking(booking_id):
     return updateBookingStatusHandler(booking_id, "confirmed")
+
+
+@admin_bp.route("/service/bookings/<int:booking_id>/status", methods=["PUT"])
+@logged_in_required
+@role_required("admin")
+def update_booking_status(booking_id):
+    """Update booking status. Body: { status: "confirmed"|"completed"|"cancelled" }."""
+    data = request.get_json(silent=True) or {}
+    new_status = data.get("status")
+    if new_status not in ("confirmed", "completed", "cancelled"):
+        return jsonify({"message": "status must be 'confirmed', 'completed', or 'cancelled'."}), 400
+    return updateBookingStatusHandler(booking_id, new_status)
+
+
+@admin_bp.route("/service/bookings/<int:booking_id>", methods=["DELETE"])
+@logged_in_required
+@role_required("admin")
+def delete_booking(booking_id):
+    """Hard-delete a service booking."""
+    return deleteBookingHandler(booking_id)
 
 
 @admin_bp.route("/service/bookings/<int:booking_id>/complete", methods=["PUT"])

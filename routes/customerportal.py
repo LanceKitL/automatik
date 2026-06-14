@@ -14,10 +14,12 @@ from controllers.customerportalController import (
     get_documents,
     get_document,
     get_amortization_schedule,
+    payAmortization,
     get_insurance,
     getRecentNotifications,
     getAllNotifications,
     reserveVehicle,
+    payReservationFee,
 )
 from controllers.vehicleController import (
     getVehicles,
@@ -89,6 +91,16 @@ def reserve_vehicle(vehicle_id):
     """
     return reserveVehicle(vehicle_id)
 
+@customerportal_bp.route("/reservations/<int:inquiry_id>/pay", methods=["POST"])
+@logged_in_required
+@role_required("customer")
+def pay_reservation_fee(inquiry_id):
+    """POST /customer-portal/reservations/<inquiry_id>/pay
+    Record reservation fee payment for a reserved vehicle.
+    Requires logged-in customer role.
+    """
+    return payReservationFee(inquiry_id)
+
 # --------- OWN SALES ------------
 @customerportal_bp.route("/sales")
 @logged_in_required
@@ -148,6 +160,17 @@ def get_amortization():
     Delegates to customerportalController.get_amortization_schedule().
     """
     return get_amortization_schedule()
+
+@customerportal_bp.route("/amortization/<int:schedule_id>/pay", methods=["POST"])
+@logged_in_required
+@role_required("customer")
+def pay_amortization(schedule_id):
+    """POST /customer-portal/amortization/<schedule_id>/pay
+    Submit a payment for an amortization entry with screenshot proof.
+    Requires logged-in customer role.
+    Delegates to customerportalController.payAmortization(schedule_id).
+    """
+    return payAmortization(schedule_id)
 
 # --------- DOCUMENTS ------------
 @customerportal_bp.route("/documents")

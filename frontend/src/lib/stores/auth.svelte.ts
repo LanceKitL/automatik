@@ -58,6 +58,8 @@ export const auth = {
 			window.location.href = '/finance_staff';
 		} else if (role === 'service_advisor') {
 			window.location.href = '/service_advisor';
+		} else if (role === 'service_staff') {
+			window.location.href = '/service_staff';
 		}
 	}
 };

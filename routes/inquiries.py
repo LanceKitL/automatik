@@ -20,7 +20,8 @@ from controllers.inquiriesController import (
     resolveInquiry,
     convertInquiryToSale,
     sendEmailForInquiry,
-    closeInquiry
+    closeInquiry,
+    deleteInquiry
 )
 
 inquiry_bp = Blueprint('inquiry', __name__)
@@ -84,6 +85,13 @@ def convert_to_sale(inquiry_id):
 def send_email(inquiry_id):
     """Send a custom email to the customer and auto-resolve the inquiry."""
     return sendEmailForInquiry(inquiry_id)
+
+@inquiry_bp.route("/<int:inquiry_id>", methods=["DELETE"])
+@logged_in_required
+@role_required("admin")
+def delete_task(inquiry_id):
+    """Force-delete an inquiry (admin only)."""
+    return deleteInquiry(inquiry_id)
 
 # ── Customer ─────────────────────────────────────────────────────────────
 

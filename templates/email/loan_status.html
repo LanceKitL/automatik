@@ -1,25 +1,14 @@
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#f0f1f5;font-family:Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f1f5"><tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;margin:24px 0">
-<tr><td style="padding:32px 24px;text-align:center;background-color:#1a3c34">
-<h1 style="color:#ffffff;margin:0;font-size:24px">Loan {{ loan_status | title }}</h1>
+{% extends "email/_base.html" %}
+{% block content %}
+<tr><td class="body">
+  <h2>Loan {{ loan_status | title }}</h2>
+  <p>Hi {{ name }},</p>
+  <p>Your loan application for Sale #{{ sale_id }} has been <strong>{{ loan_status }}</strong>.</p>
+  {% if loan_status == "approved" %}
+  <div class="info-box">Congratulations! Please proceed with the next steps to finalize your purchase.</div>
+  {% else %}
+  <p>We encourage you to contact our support team for more information.</p>
+  {% endif %}
+  <p>Thank you for choosing AutoMatik!</p>
 </td></tr>
-<tr><td style="padding:24px">
-<p style="font-size:16px;color:#333">Hi {{ name }},</p>
-<p style="font-size:16px;color:#333;line-height:1.5">Your loan application for Sale #{{ sale_id }} has been <strong>{{ loan_status }}</strong>.</p>
-{% if loan_status == "approved" %}
-<p style="font-size:16px;color:#333;line-height:1.5">Congratulations! Please proceed with the next steps to finalize your purchase.</p>
-{% else %}
-<p style="font-size:16px;color:#333;line-height:1.5">We encourage you to contact our support team for more information.</p>
-{% endif %}
-</td></tr>
-<tr><td style="padding:16px 24px;text-align:center;background-color:#f0f1f5;font-size:12px;color:#999">
-AutoMatik &copy; 2026. All rights reserved.
-</td></tr>
-</table>
-</td></tr></table>
-</body>
-</html>
+{% endblock %}

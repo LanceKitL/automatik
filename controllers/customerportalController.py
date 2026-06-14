@@ -1,10 +1,10 @@
-from conn import run_query
+from conn import run_query, get_db
 from flask import session, jsonify, request
 from datetime import datetime
 from utils.log import audit_log
 from utils.notification import fire_notif, broadcast_notif
-from services.mail_service import send_new_inquiry_notification, send_warranty_claim_notification
-import json
+from services.mail_service import send_new_inquiry_notification, send_warranty_claim_notification, send_reservation_fee_notification
+import json, os
 
 
 def index():
@@ -96,10 +96,12 @@ def index():
         # My vehicles
         my_vehicles = run_query(
             """
-            SELECT v.*
+            SELECT v.*, vp.photo_url
             FROM vehicles v
             JOIN sales s
                 ON v.vehicle_id = s.vehicle_id
+            LEFT JOIN vehicle_photos vp
+                ON v.vehicle_id = vp.vehicle_id AND vp.sort_order = 0
             WHERE s.customer_id = %s
             """,
             (customer_id,),
@@ -268,6 +270,7 @@ def get_amortization_schedule():
 
     Queries:
         - amortization_schedule joined with loan_details and sales, filtered by customer_id.
+        - LEFT JOIN payments so each entry includes proof_of_payment, payment_id, and review_status.
 
     Returns:
         tuple: (jsonify({"data": [...]}), 200).
@@ -275,18 +278,105 @@ def get_amortization_schedule():
     customer_id = session["user"]
     
     amortization_schedule = run_query("""
-                                        SELECT am.*
+                                        SELECT am.*, v.brand, v.model, v.year, v.vehicle_id,
+                                               p.payment_id, p.proof_of_payment, p.review_status
                                         FROM amortization_schedule am
                                         JOIN loan_details ld
                                             ON ld.loan_id = am.loan_id
                                         JOIN sales s
                                             ON s.sale_id = ld.sale_id
+                                        JOIN vehicles v
+                                            ON s.vehicle_id = v.vehicle_id
+                                        LEFT JOIN payments p
+                                            ON am.schedule_id = p.schedule_id AND p.payment_allocation = 'amortization'
                                         WHERE s.customer_id = %s
+                                        ORDER BY v.vehicle_id, am.month_number
                                       """,
                                       (customer_id,),
                                       fetch="all")
     
     return jsonify({"data": amortization_schedule})
+
+def payAmortization(schedule_id):
+    """Customer submits a payment for a specific amortization entry with proof screenshot.
+
+    Validates the schedule belongs to the customer, accepts a file + payment_method,
+    creates a payments record with review_status='pending_verification'.
+
+    Returns:
+        tuple: (jsonify({"payment_id": id, "message": "..."}), 201).
+    """
+    customer_id = session["user"]
+
+    entry = run_query("""
+        SELECT am.*, ld.sale_id, s.customer_id
+        FROM amortization_schedule am
+        JOIN loan_details ld ON ld.loan_id = am.loan_id
+        JOIN sales s ON s.sale_id = ld.sale_id
+        WHERE am.schedule_id = %s AND s.customer_id = %s
+    """, (schedule_id, customer_id), fetch="one")
+
+    if not entry:
+        return jsonify({"message": "Schedule entry not found."}), 404
+
+    if entry["status"] != "unpaid":
+        return jsonify({"message": "Only unpaid entries can be paid."}), 400
+
+    payment_method = request.form.get("payment_method", "online")
+
+    if "file" not in request.files:
+        return jsonify({"message": "Payment screenshot is required."}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"message": "Empty filename."}), 400
+
+    upload_dir = os.path.join("static", "uploads", "payments")
+    os.makedirs(upload_dir, exist_ok=True)
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+    filename = f"{int(datetime.now().timestamp())}_{schedule_id}.{ext}"
+    filepath = os.path.join(upload_dir, filename)
+    file.save(filepath)
+
+    proof_url = f"/static/uploads/payments/{filename}"
+
+    conn, cursor = get_db()
+    try:
+        payment_id = run_query("""
+            INSERT INTO payments (sale_id, schedule_id, amount_paid, payment_method, payment_date, recorded_by, payment_allocation, proof_of_payment, review_status)
+            VALUES (%s, %s, %s, %s, NOW(), %s, 'amortization', %s, 'pending_verification')
+        """, (entry["sale_id"], schedule_id, entry["total_due"], payment_method, customer_id, proof_url),
+            conn=conn, cursor=cursor)
+
+        fire_notif(
+            user_id=customer_id,
+            title="Payment Submitted",
+            message=f"Your payment of {entry['total_due']} for schedule #{schedule_id} has been submitted for review.",
+            channel="in_app",
+            ref_type="payments",
+            ref_id=payment_id,
+        )
+
+        broadcast_notif(
+            role="finance_staff",
+            title="Payment Pending Review",
+            message=f"Customer #{customer_id} submitted a payment of {entry['total_due']} for schedule #{schedule_id}.",
+            channel="in_app",
+            ref_type="payments",
+            ref_id=payment_id,
+        )
+
+        conn.commit()
+        return jsonify({"payment_id": payment_id, "message": "Payment submitted for review."}), 201
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"message": "Payment failed.", "error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
 
 # DOCUMENTS
 def get_documents():
@@ -786,7 +876,7 @@ def reserveVehicle(vehicle_id):
 
     # Check vehicle exists and is available
     vehicle = run_query(
-        "SELECT vehicle_id, status, make, model FROM vehicles WHERE vehicle_id = %s",
+        "SELECT vehicle_id, status, brand, model FROM vehicles WHERE vehicle_id = %s",
         (vehicle_id,), fetch="one"
     )
     if not vehicle:
@@ -820,7 +910,7 @@ def reserveVehicle(vehicle_id):
         broadcast_notif(
             role="agent",
             title="Vehicle Reserved",
-            message=f"Customer reserved {vehicle['make']} {vehicle['model']} (#{vehicle_id}).",
+            message=f"Customer reserved {vehicle['brand']} {vehicle['model']} (#{vehicle_id}).",
             channel="in_app",
             ref_type="inquiries",
             ref_id=inquiry_id,
@@ -830,14 +920,70 @@ def reserveVehicle(vehicle_id):
         fire_notif(
             user_id=customer_id,
             title="Reservation Confirmed",
-            message=f"You have reserved the {vehicle['make']} {vehicle['model']}. An agent will follow up.",
+            message=f"You have reserved the {vehicle['brand']} {vehicle['model']}. An agent will follow up.",
             channel="in_app",
             ref_type="inquiries",
             ref_id=inquiry_id,
         )
 
         conn.commit()
+
+        # Send reservation fee email
+        try:
+            user_data = run_query(
+                "SELECT email, username FROM users WHERE user_id = %s",
+                (customer_id,), fetch="one"
+            )
+            if user_data:
+                send_reservation_fee_notification(
+                    email=user_data["email"],
+                    name=user_data["username"],
+                    vehicle_name=f"{vehicle['brand']} {vehicle['model']}",
+                    amount=5000.00
+                )
+        except Exception:
+            pass
+
         return jsonify({"message": "Vehicle reserved successfully!", "inquiry_id": inquiry_id}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"message": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+RESERVATION_FEE = 5000.00
+
+def payReservationFee(inquiry_id):
+    """Record reservation fee payment for an inquiry."""
+    customer_id = session["user"]
+
+    inquiry = run_query(
+        "SELECT inquiry_id, user_id, status FROM inquiries WHERE inquiry_id = %s",
+        (inquiry_id,), fetch="one"
+    )
+    if not inquiry:
+        return jsonify({"message": "Inquiry not found."}), 404
+    if inquiry["user_id"] != customer_id:
+        return jsonify({"message": "Unauthorized."}), 403
+
+    data = request.get_json(silent=True) or {}
+    payment_method = data.get("payment_method", "online")
+
+    conn, cursor = get_db()
+    try:
+        payment_id = run_query("""
+            INSERT INTO payments (sale_id, amount_paid, payment_method, recorded_by, payment_allocation)
+            VALUES (NULL, %s, %s, %s, 'reservation_fee')
+        """, (RESERVATION_FEE, payment_method, customer_id), conn=conn, cursor=cursor)
+
+        if not payment_id:
+            conn.rollback()
+            return jsonify({"message": "Failed to record payment."}), 500
+
+        conn.commit()
+        return jsonify({"success": True, "payment_id": payment_id}), 200
     except Exception as e:
         conn.rollback()
         return jsonify({"message": str(e)}), 500

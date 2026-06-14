@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { assignInquiry, closeInquiry, getAgentsList } from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
+	import { assignInquiry, closeInquiry, deleteInquiry, getAgentsList } from '$lib/services/api';
 	import type { InquiryItem } from '$lib/services/api';
 
 	let {
@@ -18,13 +19,12 @@
 	let agents = $state<{ _id: number; username: string }[]>([]);
 	let selectedAgentId = $state<number | null>(null);
 	let actionLoading = $state(false);
-	let actionError = $state('');
+	let showDeleteConfirm = $state(false);
 
 	$effect(() => {
 		if (show && inquiry) {
 			loadAgents();
 			selectedAgentId = null;
-			actionError = '';
 		}
 	});
 
@@ -33,19 +33,19 @@
 			const res = await getAgentsList();
 			agents = (res.data as { _id: number; username: string }[]) ?? [];
 		} catch {
-			agents = [];
+			toast.error('Failed to load agents.');
 		}
 	}
 
 	async function handleAssign() {
 		if (!inquiry || !selectedAgentId) return;
 		actionLoading = true;
-		actionError = '';
 		try {
 			await assignInquiry(inquiry.inquiry_id, selectedAgentId);
+			toast.success('Inquiry assigned.');
 			onupdated();
 		} catch (e: unknown) {
-			actionError = e instanceof Error ? e.message : 'Failed to assign.';
+			toast.error(e instanceof Error ? e.message : 'Failed to assign.');
 		} finally {
 			actionLoading = false;
 		}
@@ -54,12 +54,27 @@
 	async function handleClose() {
 		if (!inquiry) return;
 		actionLoading = true;
-		actionError = '';
 		try {
 			await closeInquiry(inquiry.inquiry_id);
+			toast.success('Inquiry closed.');
 			onupdated();
 		} catch (e: unknown) {
-			actionError = e instanceof Error ? e.message : 'Failed to close.';
+			toast.error(e instanceof Error ? e.message : 'Failed to close.');
+		} finally {
+			actionLoading = false;
+		}
+	}
+
+	async function confirmDelete() {
+		if (!inquiry) return;
+		actionLoading = true;
+		try {
+			await deleteInquiry(inquiry.inquiry_id);
+			toast.success('Inquiry deleted.');
+			showDeleteConfirm = false;
+			onupdated();
+		} catch (e: unknown) {
+			toast.error(e instanceof Error ? e.message : 'Failed to delete.');
 		} finally {
 			actionLoading = false;
 		}
@@ -154,9 +169,6 @@
 
 				<!-- Action area -->
 				<div class="actions-section">
-					{#if actionError}
-						<div class="action-error">{actionError}</div>
-					{/if}
 
 					{#if inquiry.status === 'open'}
 						<div class="assign-block">
@@ -196,7 +208,38 @@
 					{#if inquiry.status === 'closed'}
 						<p class="closed-note">This inquiry is closed.</p>
 					{/if}
+
+					<div class="delete-section">
+						<button
+							class="btn-action btn-danger"
+							onclick={() => showDeleteConfirm = true}
+							disabled={actionLoading}
+						>
+							{actionLoading ? 'Deleting…' : 'Delete Inquiry'}
+						</button>
+					</div>
 				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Delete confirmation modal -->
+{#if showDeleteConfirm}
+	<div class="delete-overlay" onclick={() => showDeleteConfirm = false} role="presentation">
+		<div class="delete-modal" onclick={(e) => e.stopPropagation()} role="alertdialog">
+			<div class="delete-modal-header">
+				<h3>Delete Inquiry</h3>
+				<button class="close-btn" onclick={() => showDeleteConfirm = false}>×</button>
+			</div>
+			<div class="delete-modal-body">
+				<p>Are you sure you want to permanently delete inquiry <strong>#{inquiry?.inquiry_id}</strong>? This cannot be undone.</p>
+			</div>
+			<div class="delete-modal-footer">
+				<button class="btn-cancel" onclick={() => showDeleteConfirm = false}>Cancel</button>
+				<button class="btn-danger" onclick={confirmDelete} disabled={actionLoading}>
+					{actionLoading ? 'Deleting…' : 'Delete'}
+				</button>
 			</div>
 		</div>
 	</div>
@@ -275,10 +318,6 @@
 
 	/* ── Actions ────────────────────────────── */
 	.actions-section { margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1.25rem; }
-	.action-error {
-		background: var(--danger-bg); color: var(--danger); padding: 0.5rem 0.75rem;
-		border-radius: var(--radius-sm); font-size: 0.8rem; margin-bottom: 0.75rem;
-	}
 	.assign-block label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-dark); margin-bottom: 0.4rem; }
 	.assign-row { display: flex; gap: 0.5rem; }
 	.assign-row select { flex: 1; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: var(--radius-sm); font-size: 0.85rem; }
@@ -297,4 +336,18 @@
 	.btn-secondary:hover:not(:disabled) { background: #d1d5db; }
 	.closed-note { text-align: center; color: var(--text-muted); font-style: italic; font-size: 0.85rem; }
 	.assigned-note { text-align: center; color: var(--warning); font-size: 0.85rem; background: var(--warning-bg-light); padding: 0.5rem; border-radius: var(--radius-sm); }
+	.delete-section { margin-top: 1rem; border-top: 1px solid var(--border-lighter); padding-top: 1rem; }
+	.btn-danger { background: #ef4444; color: white; }
+	.btn-danger:hover:not(:disabled) { background: #dc2626; }
+	.btn-cancel { background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-muted); font-family: inherit; }
+	.btn-cancel:hover { background: var(--bg-hover); }
+
+	/* ── Delete Modal ───────────────────────── */
+	.delete-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1100; }
+	.delete-modal { background: var(--bg-card); border-radius: var(--radius-lg); width: 400px; max-width: 90vw; box-shadow: var(--shadow-lg); font-family: var(--font-sans); }
+	.delete-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); }
+	.delete-modal-header h3 { font-size: 16px; font-weight: 700; margin: 0; color: var(--text-primary); }
+	.delete-modal-body { padding: 1.25rem 1.5rem; }
+	.delete-modal-body p { margin: 0; font-size: 14px; color: var(--text-primary); line-height: 1.5; }
+	.delete-modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 1rem 1.5rem; border-top: 1px solid var(--border); }
 </style>

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { PUBLIC_API } from '$env/static/public';
 	import { getAllDocuments } from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
 	import { FolderKanban, Eye, Download, FileText } from '@lucide/svelte';
 	import Loader from '$lib/components/Loader.svelte';
 
@@ -12,19 +14,25 @@
 			const res = await getAllDocuments();
 			docs = Array.isArray(res) ? res : (res.data ?? []);
 		} catch {
-			// ignore
+			toast.error('Failed to load documents.');
 		} finally {
 			loading = false;
 		}
 	});
 
+	function resolveFileUrl(url: string | null | undefined): string | null {
+		if (!url) return null;
+		if (url.startsWith('/')) return `${PUBLIC_API}${url}`;
+		return url;
+	}
+
 	function viewDoc(d: Record<string, unknown>) {
-		const url = d.file_url as string;
+		const url = resolveFileUrl(d.file_url as string);
 		if (url) window.open(url, '_blank');
 	}
 
 	function downloadDoc(d: Record<string, unknown>) {
-		const url = d.file_url as string;
+		const url = resolveFileUrl(d.file_url as string);
 		if (url) {
 			const a = document.createElement('a');
 			a.href = url;

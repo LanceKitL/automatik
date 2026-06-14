@@ -2,14 +2,14 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { getFinanceLoan, updateFinanceLoanStatus, getFinanceInsurance } from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 
 	let loanId = $derived(Number($page.params.id));
 	let loan = $state<Record<string, unknown> | null>(null);
 	let schedule = $state<Record<string, unknown>[]>([]);
-	let loading = $state(true);
-	let message = $state('');
-	let actionLoading = $state(false);
+  let loading = $state(true);
+  let actionLoading = $state(false);
 	let rejectionReason = $state('');
 	let insuranceRecords = $state<Record<string, unknown>[]>([]);
 
@@ -30,7 +30,7 @@
 			const insRes = await getFinanceInsurance();
 			insuranceRecords = (insRes.data ?? []).filter((r: Record<string, unknown>) => r.sale_id === loan?.sale_id);
 		} catch {
-			// error
+			toast.error('Failed to load loan details.');
 		} finally {
 			loading = false;
 		}
@@ -41,12 +41,11 @@
 		actionLoading = true;
 		try {
 			await updateFinanceLoanStatus(loanId, 'approved');
-			message = 'Loan approved.';
-			// Refresh
+			toast.success('Loan approved.');
 			const res = await getFinanceLoan(loanId);
 			loan = res.data as Record<string, unknown>;
 		} catch (e: unknown) {
-			message = e instanceof Error ? e.message : 'Error.';
+			toast.error(e instanceof Error ? e.message : 'Error approving loan.');
 		} finally {
 			actionLoading = false;
 		}
@@ -54,18 +53,18 @@
 
 	async function handleReject() {
 		if (!rejectionReason) {
-			alert('Please select a rejection reason.');
+			toast.error('Please select a rejection reason.');
 			return;
 		}
 		if (!confirm(`Reject this loan? Reason: ${rejectionReason}`)) return;
 		actionLoading = true;
 		try {
 			await updateFinanceLoanStatus(loanId, 'rejected');
-			message = `Loan rejected. Reason: ${rejectionReason}`;
+			toast.success(`Loan rejected. Reason: ${rejectionReason}`);
 			const res = await getFinanceLoan(loanId);
 			loan = res.data as Record<string, unknown>;
 		} catch (e: unknown) {
-			message = e instanceof Error ? e.message : 'Error.';
+			toast.error(e instanceof Error ? e.message : 'Error rejecting loan.');
 		} finally {
 			actionLoading = false;
 		}
@@ -81,10 +80,6 @@
 
 <div class="page">
 <h1>Loan Review — #{loanId}</h1>
-
-{#if message}
-	<p class="msg">{message}</p>
-{/if}
 
 {#if loading}
 	<p>Loading…</p>
@@ -275,7 +270,6 @@
 
 	.page { font-family: 'Syne', sans-serif; padding: 2rem 1.5rem; max-width: 1400px; margin: 0 auto; }
 	h1 { padding: 0; margin: 0 0 1rem; font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; color: #1a1a2e; }
-	.msg { padding: 0.5rem 0.75rem; background: #ecfdf5; color: #059669; border-radius: 6px; font-size: 13px; margin-bottom: 1rem; }
 	.split { display: flex; gap: 1.5rem; padding: 0; }
 	.left-panel { flex: 1; display: flex; flex-direction: column; gap: 1rem; }
 	.right-panel { width: 22rem; position: sticky; top: 1.5rem; align-self: flex-start; }

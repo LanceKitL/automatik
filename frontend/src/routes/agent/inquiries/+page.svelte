@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { getInquiries, getAgentInquiries, resolveInquiry, convertInquiryToSale, selfAssignInquiry, sendInquiryEmail } from '$lib/services/api';
 	import type { InquiryItem } from '$lib/services/api';
 	import { X, DollarSign, Mail } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
+	import { getSocket } from '$lib/stores/socket.svelte';
 
 	let inquiries = $state<InquiryItem[]>([]);
 	let agentInquiries = $state<InquiryItem[]>([]);
@@ -42,6 +43,18 @@
 	// on initial render, load the inquiries
 	onMount(() => {
 		fetchAll();
+		connectSocket();
+		const s = getSocket();
+		if (s) {
+			s.on('notification', fetchAll);
+		}
+	});
+
+	onDestroy(() => {
+		const s = getSocket();
+		if (s) {
+			s.off('notification', fetchAll);
+		}
 	});
     
 	async function fetchAll() {
@@ -51,6 +64,7 @@
 			inquiries = shared;
 			agentInquiries = agentData.data;
 		} catch {
+			toast.error('Failed to load inquiries.');
 			inquiries = [];
 			agentInquiries = [];
 		} finally {
@@ -89,11 +103,12 @@
 		actionId = inquiryId;
 		try {
 			await sendInquiryEmail(inquiryId, { subject: emailForm.subject, body: emailForm.body });
+			toast.success('Email sent.');
 			selectedInquiry = null;
 			emailForm = null;
 			await fetchAll();
 		} catch (e: unknown) {
-			alert(e instanceof Error ? e.message : 'Failed to send email.');
+			toast.error(e instanceof Error ? e.message : 'Failed to send email.');
 		} finally {
 			actionId = null;
 		}
@@ -114,11 +129,12 @@
 				payload.down_payment = convertForm.down_payment;
 			}
 			await convertInquiryToSale(inquiryId, payload as any);
+			toast.success('Sale created from inquiry.');
 			selectedInquiry = null;
 			convertForm = null;
 			await fetchAll();
 		} catch (e: unknown) {
-			alert(e instanceof Error ? e.message : 'Failed to convert inquiry.');
+			toast.error(e instanceof Error ? e.message : 'Failed to convert inquiry.');
 		} finally {
 			actionId = null;
 		}
@@ -191,13 +207,23 @@
 		e.preventDefault();
 		dropTarget = null;
 		if (!dragItem || !dragSource) return;
-		if (dragSource === 'open' && target === 'pending') {
-			await handleSelfAssign(dragItem.inquiry_id);
-		} else if (dragSource === 'pending' && target === 'resolved') {
-			await handleResolve(dragItem.inquiry_id);
+		const item = dragItem;
+		const source = dragSource;
+		try {
+			if (source === 'open' && target === 'pending') {
+				await selfAssignInquiry(item.inquiry_id);
+				toast.success(`Inquiry #${item.inquiry_id} assigned to you`);
+			} else if (source === 'pending' && target === 'resolved') {
+				await resolveInquiry(item.inquiry_id);
+				toast.success(`Inquiry #${item.inquiry_id} resolved`);
+			}
+			await fetchAll();
+		} catch {
+			toast.error('Operation failed.');
+		} finally {
+			dragItem = null;
+			dragSource = null;
 		}
-		dragItem = null;
-		dragSource = null;
 	}
 
 	function statusBadgeClass(s: string): string {
@@ -207,8 +233,10 @@
 		return m[s] ?? 'sb-def';
 	}
 
-	function formatTime(iso: string) {
+	function formatTime(iso: string | null | undefined) {
+		if (!iso) return '—';
 		const d = new Date(iso);
+		if (isNaN(d.getTime())) return '—';
 		const diff = Date.now() - d.getTime();
 		const mins = Math.floor(diff / 60000);
 		if (mins < 1) return 'Just now';
@@ -519,7 +547,7 @@
 {/if}
 
 <style>
-	.page { font-family: var(--font-sans); padding: 1.5rem 1.5rem; max-width: 1500px; margin: 0 auto; flex: 1; min-height: 0; overflow: hidden; box-sizing: border-box; display: flex; flex-direction: column; }
+	.page { font-family: var(--font-sans); padding: 1.5rem; max-width: 1500px; margin: 0 auto; flex: 1; min-height: 0; overflow: hidden; box-sizing: border-box; display: flex; flex-direction: column; }
 
 	.top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; flex-wrap: wrap; gap: 10px; flex-shrink: 0; }
 	.title-row { display: flex; align-items: baseline; gap: 12px; flex-direction: column;}

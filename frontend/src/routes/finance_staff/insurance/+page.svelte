@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { getFinanceInsurance } from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
 	import { Shield, Plus, Search } from '@lucide/svelte';
 	import Loader from '$lib/components/Loader.svelte';
 	import CreateInsuranceDrawer from './CreateInsuranceDrawer.svelte';
@@ -16,7 +17,7 @@
 			const res = await getFinanceInsurance();
 			records = res.data ?? [];
 		} catch {
-			// ignore
+			toast.error('Failed to load insurance records.');
 		} finally {
 			loading = false;
 		}

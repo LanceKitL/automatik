@@ -1,25 +1,23 @@
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#f0f1f5;font-family:Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f1f5"><tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;margin:24px 0">
-<tr><td style="padding:32px 24px;text-align:center;background-color:#1a3c34">
-<h1 style="color:#ffffff;margin:0;font-size:24px">Payment Receipt</h1>
+{% extends "email/_base.html" %}
+{% block content %}
+<tr><td class="body">
+  <h2>Payment Receipt</h2>
+  <p>Hi {{ name }},</p>
+  <p>A payment has been recorded for your purchase. Here's the receipt:</p>
+  <table class="details" cellpadding="0" cellspacing="0">
+    {% if vehicle_name %}
+    <tr><td class="lbl">Vehicle</td><td class="val">{{ vehicle_name }}</td></tr>
+    {% endif %}
+    <tr><td class="lbl">Sale ID</td><td class="val">#{{ sale_id }}</td></tr>
+    <tr><td class="lbl">Amount Paid</td><td class="val">PHP {{ "{:,.2f}".format(amount_paid) if amount_paid is number else amount_paid }}</td></tr>
+    <tr><td class="lbl">Payment Method</td><td class="val">{{ payment_method }}</td></tr>
+    {% if allocation %}
+    <tr><td class="lbl">Allocation</td><td class="val">{{ allocation }}</td></tr>
+    {% endif %}
+    {% if reference %}
+    <tr><td class="lbl">Reference</td><td class="val">{{ reference }}</td></tr>
+    {% endif %}
+  </table>
+  <p style="font-size:13px;color:#9ca3af;">Thank you for choosing AutoMatik!</p>
 </td></tr>
-<tr><td style="padding:24px">
-<p style="font-size:16px;color:#333">Hi {{ name }},</p>
-<p style="font-size:16px;color:#333;line-height:1.5">We have received your payment. Here's the receipt:</p>
-<table width="100%" cellpadding="8" style="margin:16px 0;background-color:#f8f9fa">
-<tr><td style="font-size:14px;color:#666">Sale ID</td><td style="font-size:14px;font-weight:bold">{{ sale_id }}</td></tr>
-<tr><td style="font-size:14px;color:#666">Amount Paid</td><td style="font-size:14px;font-weight:bold">PHP {{ "{:,.2f}".format(amount_paid) if amount_paid is number else amount_paid }}</td></tr>
-<tr><td style="font-size:14px;color:#666">Payment Method</td><td style="font-size:14px;font-weight:bold">{{ payment_method }}</td></tr>
-</table>
-</td></tr>
-<tr><td style="padding:16px 24px;text-align:center;background-color:#f0f1f5;font-size:12px;color:#999">
-AutoMatik &copy; 2026. All rights reserved.
-</td></tr>
-</table>
-</td></tr></table>
-</body>
-</html>
+{% endblock %}

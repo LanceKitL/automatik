@@ -1,37 +1,13 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-  body { font-family: Arial, Helvetica, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
-  .container { max-width: 600px; margin: 24px auto; background: #ffffff; border-radius: 8px; overflow: hidden; }
-  .header { background: #1a3a5c; padding: 24px; text-align: center; }
-  .header h1 { color: #ffffff; margin: 0; font-size: 22px; }
-  .body { padding: 24px; }
-  .body p { color: #333; line-height: 1.6; margin: 8px 0; }
-  .label { font-weight: bold; color: #555; }
-  .value { color: #1a3a5c; }
-  .footer { background: #f4f4f4; padding: 16px 24px; text-align: center; font-size: 12px; color: #888; }
-</style>
-</head>
-<body>
-<div class="container">
-  <div class="header">
-    <h1>New Customer Inquiry</h1>
-  </div>
-  <div class="body">
-    <p>A customer has submitted a new inquiry through the portal.</p>
-    <p><span class="label">Customer ID:</span> <span class="value">{{ customer_id }}</span></p>
-    <p><span class="label">Vehicle:</span> <span class="value">{{ vehicle_name }}</span></p>
-    <p><span class="label">Message:</span></p>
-    <p class="value">{{ message }}</p>
-    <p style="margin-top: 16px;">
-      <a href="{{ inquiry_url }}" style="display: inline-block; background: #1a3a5c; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 4px;">View Inquiry</a>
-    </p>
-  </div>
-  <div class="footer">
-    <p>AutoMatik &mdash; Customer Portal Notification</p>
-  </div>
-</div>
-</body>
-</html>
+{% extends "email/_base.html" %}
+{% block content %}
+<tr><td class="body">
+  <h2>New Customer Inquiry</h2>
+  <p>A customer has submitted a new inquiry through the portal.</p>
+  <table class="details" cellpadding="0" cellspacing="0">
+    <tr><td class="lbl">Customer ID</td><td class="val">{{ customer_id }}</td></tr>
+    <tr><td class="lbl">Vehicle</td><td class="val">{{ vehicle_name }}</td></tr>
+  </table>
+  <div class="info-box"><strong>Message:</strong><br>{{ message }}</div>
+  <div class="btn-wrap"><a class="btn" href="{{ inquiry_url }}">View Inquiry</a></div>
+</td></tr>
+{% endblock %}

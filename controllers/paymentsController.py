@@ -133,10 +133,24 @@ def recordPayment(sale_id):
             customer_name = run_query("SELECT full_name FROM user_profile WHERE user_id = %s", (customer["user_id"],), fetch="one")
             name = customer_name["full_name"] if customer_name else "Customer"
 
+            vehicle = run_query("""
+                SELECT v.brand, v.model FROM vehicles v
+                JOIN sales s ON s.vehicle_id = v.vehicle_id
+                WHERE s.sale_id = %s
+            """, (sale_id,), fetch="one")
+            vehicle_name = f"{vehicle['brand']} {vehicle['model']}" if vehicle else None
+
             try:
-                send_payment_receipt(customer["email"], name, amount_paid, sale_id, payment_method)
-            except Exception:
-                pass
+                from flask import copy_current_request_context
+                import threading
+
+                @copy_current_request_context
+                def _send_receipt():
+                    send_payment_receipt(customer["email"], name, amount_paid, sale_id, payment_method, allocation=payment_allocation, reference=reference, vehicle_name=vehicle_name)
+
+                threading.Thread(target=_send_receipt, daemon=True).start()
+            except Exception as e:
+                print(f"[mail] Failed to send payment receipt: {e}")
 
         return jsonify({"payment_id": payment_id}), 201
 
@@ -197,6 +211,15 @@ def getPaymentSummary():
     return jsonify({"data": result}), 200
 
 
+def deletePayment(payment_id):
+    payment = run_query("SELECT * FROM payments WHERE payment_id = %s", (payment_id,), fetch="one")
+    if not payment:
+        return jsonify({"message": "Payment not found."}), 404
+    run_query("DELETE FROM payments WHERE payment_id = %s", (payment_id,))
+    audit_log(session["user"], "DELETE", "payments", payment_id)
+    return jsonify({"message": "Payment deleted."}), 200
+
+
 def uploadPaymentProof(payment_id):
     payment = run_query("""
         SELECT p.*, s.customer_id FROM payments p
@@ -232,3 +255,107 @@ def uploadPaymentProof(payment_id):
     )
 
     return jsonify({"message": "Proof uploaded successfully.", "proof_of_payment": proof_url}), 200
+
+
+def adminUploadPaymentProof(payment_id):
+    """Admin-only version: upload proof for any payment without customer ownership check."""
+    payment = run_query("SELECT * FROM payments WHERE payment_id = %s", (payment_id,), fetch="one")
+    if not payment:
+        return jsonify({"message": "Payment not found."}), 404
+
+    if "file" not in request.files:
+        return jsonify({"message": "No file provided."}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"message": "Empty filename."}), 400
+
+    upload_dir = os.path.join("static", "uploads", "payments")
+    os.makedirs(upload_dir, exist_ok=True)
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+    filename = f"{int(datetime.now().timestamp())}_{payment_id}.{ext}"
+    filepath = os.path.join(upload_dir, filename)
+    file.save(filepath)
+
+    proof_url = f"/static/uploads/payments/{filename}"
+    run_query(
+        "UPDATE payments SET proof_of_payment = %s WHERE payment_id = %s",
+        (proof_url, payment_id),
+    )
+
+    return jsonify({"message": "Proof uploaded successfully.", "proof_of_payment": proof_url}), 200
+
+
+def reviewPayment(payment_id):
+    """Finance staff approves or rejects a customer-submitted payment (with screenshot).
+
+    Expects JSON: {"status": "verified"|"rejected", "note": "optional reason"}.
+    - On verify: sets amortization_schedule.status='paid', payments.review_status='verified'.
+    - On reject: sets payments.review_status='rejected', notifies customer.
+
+    Returns:
+        tuple: (jsonify(...), 200).
+    """
+    data = request.get_json(silent=True) or {}
+    status = data.get("status")
+    note = data.get("note", "")
+
+    if status not in ("verified", "rejected"):
+        return jsonify({"message": "status must be 'verified' or 'rejected'."}), 400
+
+    payment = run_query("""
+        SELECT p.*, u.email AS customer_email, u.user_id AS customer_user_id, u.username AS customer_name
+        FROM payments p
+        LEFT JOIN sales s ON p.sale_id = s.sale_id
+        LEFT JOIN users u ON s.customer_id = u.user_id
+        WHERE p.payment_id = %s
+    """, (payment_id,), fetch="one")
+
+    if not payment:
+        return jsonify({"message": "Payment not found."}), 404
+
+    if payment["review_status"] != "pending_verification":
+        return jsonify({"message": f"Payment is already {payment['review_status']}."}), 409
+
+    conn, cursor = get_db()
+    try:
+        run_query(
+            "UPDATE payments SET review_status = %s, notes = %s WHERE payment_id = %s",
+            (status, note, payment_id),
+            conn=conn, cursor=cursor,
+        )
+
+        if status == "verified" and payment.get("schedule_id"):
+            run_query(
+                "UPDATE amortization_schedule SET status = 'paid' WHERE schedule_id = %s",
+                (payment["schedule_id"],),
+                conn=conn, cursor=cursor,
+            )
+
+        conn.commit()
+
+        if payment.get("customer_user_id"):
+            title = "Payment Approved" if status == "verified" else "Payment Rejected"
+            msg = (
+                f"Your payment of {payment['amount_paid']} has been approved."
+                if status == "verified"
+                else f"Your payment of {payment['amount_paid']} was rejected. {note}"
+            )
+            fire_notif(
+                user_id=payment["customer_user_id"],
+                title=title,
+                message=msg,
+                channel="in_app",
+                ref_type="payments",
+                ref_id=payment_id,
+            )
+
+        return jsonify({"message": f"Payment {status} successfully."}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"message": "Review failed.", "error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()

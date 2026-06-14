@@ -51,8 +51,10 @@
 		auth.logout();
 	}
 
-	function formatTime(iso: string) {
+	function formatTime(iso: string | null | undefined) {
+		if (!iso) return '—';
 		const d = new Date(iso);
+		if (isNaN(d.getTime())) return '—';
 		const now = new Date();
 		const diff = now.getTime() - d.getTime();
 		const mins = Math.floor(diff / 60000);

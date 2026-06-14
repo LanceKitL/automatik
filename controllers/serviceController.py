@@ -1,22 +1,72 @@
 from flask import session, jsonify, request
-from utils.log import audit_log
+from utils.log import audit_log, get_local_ip
 from utils.notification import fire_notif, broadcast_notif
-from datetime import datetime
+from datetime import datetime, timedelta, date, time
 from conn import run_query, get_db
 import mysql.connector
 import json
 
 # --- SERVICE SLOTS ---
 
+_SLOT_TIMES = {
+    "maintenance": [time(10, 0), time(14, 0), time(16, 0)],
+    "repair": [time(10, 0), time(14, 0), time(16, 0)],
+}
+
+
+def _ensure_slots_exist(slot_type):
+    """Auto-generate missing slots for the next 30 days, Mon–Sat only."""
+    if slot_type not in _SLOT_TIMES:
+        return
+
+    today = date.today()
+    end = today + timedelta(days=30)
+    times = _SLOT_TIMES[slot_type]
+
+    existing = run_query(
+        """SELECT DATE(slot_datetime) AS d, TIME(slot_datetime) AS t
+           FROM service_slots
+           WHERE slot_type = %s AND DATE(slot_datetime) BETWEEN %s AND %s""",
+        (slot_type, today, end),
+        fetch="all",
+    )
+    existing_set = {(str(row["d"]), str(row["t"])) for row in existing}
+
+    inserts = []
+    current = today
+    while current <= end:
+        if current.weekday() < 6:  # Mon=0 … Sat=5
+            for t in times:
+                if (str(current), t.strftime("%H:%M:%S")) not in existing_set:
+                    inserts.append((datetime.combine(current, t), slot_type, 1))
+        current += timedelta(days=1)
+
+    if inserts:
+        conn, cursor = get_db()
+        try:
+            cursor.executemany(
+                "INSERT INTO service_slots (slot_datetime, slot_type, capacity, is_available) VALUES (%s, %s, %s, 1)",
+                inserts,
+            )
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+
+
 def listServiceSlotsHandler():
     """
     List available service slots.
+    Auto-generates maintenance & repair slots (Mon–Sat) if none exist.
     Filters (query string): ?slot_type=test_drive|maintenance|repair, ?date=YYYY-MM-DD
     Returns:    JSON { data: [{ slot_id, slot_datetime, slot_type, capacity, is_available, remaining, ... }] }
     Status:     200
     """
     slot_type = request.args.get("slot_type")
-    date = request.args.get("date")
+    query_date = request.args.get("date")
+
+    if slot_type:
+        _ensure_slots_exist(slot_type)
 
     conditions = ["s.is_available = 1"]
     params = []
@@ -24,9 +74,9 @@ def listServiceSlotsHandler():
     if slot_type:
         conditions.append("s.slot_type = %s")
         params.append(slot_type)
-    if date:
+    if query_date:
         conditions.append("DATE(s.slot_datetime) = %s")
-        params.append(date)
+        params.append(query_date)
 
     where = " AND ".join(conditions)
 
@@ -211,6 +261,7 @@ def createBookingHandler():
     vehicle_id = data.get("vehicle_id")
     booking_type = data.get("booking_type")
     warranty_claim_id = data.get("warranty_claim_id")
+    notes = data.get("notes", "")
 
     if not slot_id or not vehicle_id or not booking_type:
         return jsonify({"message": "slot_id, vehicle_id, and booking_type are required."}), 400
@@ -238,9 +289,9 @@ def createBookingHandler():
 
         cursor.execute("""
             INSERT INTO service_bookings
-            (customer_id, slot_id, vehicle_id, booking_type, status, warranty_claim_id)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (user_id, slot_id, vehicle_id, booking_type, "pending", warranty_claim_id))
+            (customer_id, slot_id, vehicle_id, booking_type, status, notes, warranty_claim_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (user_id, slot_id, vehicle_id, booking_type, "pending", notes, warranty_claim_id))
         booking_id = cursor.lastrowid
 
         if (current_bookings + 1) >= slot["capacity"]:
@@ -252,14 +303,16 @@ def createBookingHandler():
         audit_log(session["user"], "POST", "service_bookings", booking_id, conn=conn, cursor=cursor)
 
         # Notify agents and admins about the new booking
-        broadcast_notif(
-            role="agent",
-            title="New Booking",
-            message=f"{booking_type.replace('_', ' ').title()} booking #{booking_id} created.",
-            channel="in_app",
-            ref_type="service_bookings",
-            ref_id=booking_id,
-        )
+        if booking_type == "test_drive":
+            broadcast_notif(
+                role="agent",
+                title="New Booking",
+                message=f"{booking_type.replace('_', ' ').title()} booking #{booking_id} created.",
+                channel="in_app",
+                ref_type="service_bookings",
+                ref_id=booking_id,
+            )
+            
         broadcast_notif(
             role="admin",
             title="New Booking",
@@ -269,16 +322,146 @@ def createBookingHandler():
             ref_id=booking_id,
         )
 
-        return jsonify({"message": "Booking created!", "booking_id": booking_id}), 201
+        # Confirm to the customer
+        try:
+            vn = run_query(
+                "SELECT CONCAT(brand, ' ', model) AS name FROM vehicles WHERE vehicle_id = %s",
+                (vehicle_id,), fetch="one")
+            si = run_query(
+                "SELECT slot_datetime FROM service_slots WHERE slot_id = %s",
+                (slot_id,), fetch="one")
+            vname = vn["name"] if vn else "Vehicle"
+            sdt = si["slot_datetime"].strftime("%A, %B %d at %I:%M %p") if si and hasattr(si["slot_datetime"], "strftime") else str(si["slot_datetime"])
+            
+            
+            # fire_notif(
+            #     user_id=user_id,
+            #     title="Booking Confirmed",
+            #     message=f"Your {booking_type.replace('_', ' ')} booking for {vname} on {sdt} has been received. We'll notify you once the estimate is ready.",
+            #     channel="in_app",
+            #     ref_type="service_bookings",
+            #     ref_id=booking_id,
+            # )
+        except Exception:
+            pass
 
-    except mysql.connector.errors.OperationalError as e:
+        # Send test drive confirmation email
+        if booking_type == "test_drive":
+            try:
+                user = run_query(
+                    "SELECT email, username FROM users WHERE user_id = %s",
+                    (user_id,), fetch="one"
+                )
+                slot_info = run_query(
+                    "SELECT slot_datetime FROM service_slots WHERE slot_id = %s",
+                    (slot_id,), fetch="one"
+                )
+                vehicle_info = run_query(
+                    "SELECT CONCAT(brand, ' ', model) AS name FROM vehicles WHERE vehicle_id = %s",
+                    (vehicle_id,), fetch="one"
+                )
+                if user and slot_info:
+                    from flask import copy_current_request_context
+                    import threading
+
+                    @copy_current_request_context
+                    def _send_test_drive():
+                        from services.mail_service import send_test_drive_confirmed
+                        send_test_drive_confirmed(
+                            email=user["email"],
+                            name=user["username"],
+                            booking_id=booking_id,
+                            date_time=slot_info["slot_datetime"].strftime("%A, %B %d, %Y at %I:%M %p"),
+                            location="AutoMatik Dealership",
+                            vehicle_name=vehicle_info["name"] if vehicle_info else "your selected vehicle"
+                        )
+
+                    threading.Thread(target=_send_test_drive, daemon=True).start()
+            except Exception:
+                pass
+
+    except mysql.connector.Error as e:
         conn.rollback()
-        if "Lock wait timeout" in str(e):
+        if "Lock wait timeout" in str(e) or "Deadlock" in str(e):
             return jsonify({"error": "Resource locked. Retry."}), 503
-        raise
-    except Exception:
+        return jsonify({"message": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+    return jsonify({"message": "Booking created!", "booking_id": booking_id}), 201
+
+
+def createGuestBookingHandler():
+    """Public: guest books a test drive (no login required)."""
+    data = request.get_json()
+    guest_name = data.get("guest_name")
+    guest_email = data.get("guest_email")
+    guest_number = data.get("guest_number")
+    slot_id = data.get("slot_id")
+    vehicle_id = data.get("vehicle_id")
+    booking_type = data.get("booking_type")
+    notes = data.get("notes", "")
+
+    if not guest_name or not guest_email:
+        return jsonify({"message": "guest_name and guest_email are required."}), 400
+
+    if not slot_id or not vehicle_id or not booking_type:
+        return jsonify({"message": "slot_id, vehicle_id, and booking_type are required."}), 400
+
+    if booking_type not in ("test_drive", "maintenance", "repair"):
+        return jsonify({"message": "booking_type must be test_drive, maintenance, or repair."}), 422
+
+    conn, cursor = get_db()
+    try:
+        cursor.execute(
+            "SELECT capacity, is_available FROM service_slots WHERE slot_id = %s FOR UPDATE",
+            (slot_id,))
+        slot = cursor.fetchone()
+
+        if not slot or not slot["is_available"]:
+            return jsonify({"message": "Slot is unavailable."}), 400
+
+        cursor.execute(
+            "SELECT COUNT(*) AS total FROM service_bookings WHERE slot_id = %s AND status != %s",
+            (slot_id, "cancelled"))
+        current_bookings = cursor.fetchone()["total"]
+
+        if current_bookings >= slot["capacity"]:
+            return jsonify({"message": "Slot has reached its capacity."}), 409
+
+        guest_info = f"Guest: {guest_name} <{guest_email}>"
+        if guest_number:
+            guest_info += f" ({guest_number})"
+        combined_notes = guest_info + (f" | {notes}" if notes else "")
+
+        cursor.execute("""
+            INSERT INTO service_bookings
+            (customer_id, slot_id, vehicle_id, booking_type, status, notes)
+            VALUES (NULL, %s, %s, %s, %s, %s)
+        """, (slot_id, vehicle_id, booking_type, "pending", combined_notes))
+        booking_id = cursor.lastrowid
+
+        if (current_bookings + 1) >= slot["capacity"]:
+            cursor.execute(
+                "UPDATE service_slots SET is_available = 0 WHERE slot_id = %s",
+                (slot_id,))
+
+        conn.commit()
+
+        broadcast_notif(
+            role="admin",
+            title="New Guest Booking",
+            message=f"Guest {guest_name} booked a {booking_type.replace('_', ' ')} (#{booking_id}).",
+            channel="in_app",
+            ref_type="service_bookings",
+            ref_id=booking_id,
+        )
+
+        return jsonify({"message": "Booking created!", "booking_id": booking_id}), 201
+    except Exception as e:
         conn.rollback()
-        raise
+        return jsonify({"message": str(e)}), 500
     finally:
         cursor.close()
         conn.close()
@@ -320,6 +503,11 @@ def updateBookingStatusHandler(booking_id, new_status):
             "UPDATE service_bookings SET status = %s WHERE booking_id = %s",
             (new_status, booking_id))
 
+        if not booking["assigned_to"]:
+            cursor.execute(
+                "UPDATE service_bookings SET assigned_to = %s WHERE booking_id = %s",
+                (session["user"], booking_id))
+
         if new_status == "cancelled":
             cursor.execute(
                 "UPDATE service_slots SET is_available = 1 WHERE slot_id = %s",
@@ -351,11 +539,22 @@ def updateBookingStatusHandler(booking_id, new_status):
 
 def listAllBookingsHandler():
     """
-    List all service bookings (admin / service_advisor). JOINs customer, slot, vehicle, assigned advisor.
+    List all service bookings (admin / service_advisor / service_staff).
+    JOINs customer, slot, vehicle, assigned advisor.
+
+    Optional query param: ?type=repair|maintenance|test_drive — filter by slot_type.
+
     Returns:    JSON { data: [{ booking_id, customer_name, slot_datetime, slot_type, brand, model, status, assigned_to_name, ... }] }
     Status:     200
     """
-    bookings = run_query("""
+    slot_type = request.args.get("type")
+    where = ""
+    values = ()
+    if slot_type:
+        where = "WHERE s.slot_type = %s"
+        values = (slot_type,)
+
+    bookings = run_query(f"""
         SELECT b.*, s.slot_datetime, s.slot_type,
                v.brand, v.model, v.year,
                u.username AS customer_name,
@@ -365,8 +564,9 @@ def listAllBookingsHandler():
         JOIN vehicles v ON b.vehicle_id = v.vehicle_id
         JOIN users u ON b.customer_id = u.user_id
         LEFT JOIN users a ON b.assigned_to = a.user_id
+        {where}
         ORDER BY b.created_at DESC
-    """, fetch="all")
+    """, values, fetch="all")
 
     return jsonify({"data": bookings}), 200
 
@@ -391,6 +591,15 @@ def getMyBookingsHandler():
     """, (user_id,), fetch="all")
 
     return jsonify({"data": bookings}), 200
+
+
+def deleteBookingHandler(booking_id):
+    booking = run_query("SELECT * FROM service_bookings WHERE booking_id = %s", (booking_id,), fetch="one")
+    if not booking:
+        return jsonify({"message": "Booking not found."}), 404
+    run_query("DELETE FROM service_bookings WHERE booking_id = %s", (booking_id,))
+    audit_log(session["user"], "DELETE", "service_bookings", booking_id)
+    return jsonify({"message": "Booking deleted."}), 200
 
 
 def assignToSelfHandler(booking_id):
@@ -521,6 +730,7 @@ def createEstimateHandler(booking_id):
     Only allowed when status is 'draft_estimate'.
     Path param: booking_id
     Body:       estimate_data (object, required) — { parts: [...], labor: [...], misc: [...], subtotal, tax, total }
+                notify_customer (bool, optional) — send in-app notification to the customer
     Returns:    JSON { message }
     Status:     200, 400, 403, 404
     """
@@ -543,6 +753,19 @@ def createEstimateHandler(booking_id):
         (json.dumps(estimate_data), booking_id))
 
     audit_log(session["user"], "PUT estimate", "service_bookings", booking_id)
+
+    if data.get("notify_customer"):
+        customer_id = booking["customer_id"]
+        fire_notif(
+            user_id=customer_id,
+            title="Draft Estimate Ready",
+            message=f"A draft estimate for booking #{booking_id} has been prepared by our service team. Please check your portal for details.",
+            channel="in_app",
+            ref_type="service_bookings",
+            ref_id=booking_id,
+        )
+        return jsonify({"message": "Estimate saved and customer notified."}), 200
+
     return jsonify({"message": "Estimate saved."}), 200
 
 
@@ -579,6 +802,92 @@ def transmitEstimateHandler(booking_id):
     return jsonify({"message": "Estimate transmitted for signature."}), 200
 
 
+def acknowledgeEstimateHandler(booking_id):
+    """
+    Customer acknowledges a draft estimate, confirming they want to proceed.
+    Changes booking status to 'confirmed' and sends the customer a
+    confirmation message with repair details and a reminder to bring
+    their vehicle on time.
+    Path param: booking_id
+    Returns:    JSON { message }
+    Status:     200, 404, 400, 403
+    """
+    booking = run_query(
+        "SELECT * FROM service_bookings WHERE booking_id = %s",
+        (booking_id,), fetch="one")
+    if not booking:
+        return jsonify({"message": "Booking not found."}), 404
+
+    if booking["customer_id"] != session["user"]:
+        return jsonify({"message": "This booking does not belong to you."}), 403
+
+    if not booking.get("estimate_data"):
+        return jsonify({"message": "No estimate to acknowledge."}), 400
+
+    if booking["status"] != "draft_estimate":
+        return jsonify({"message": "Only draft estimates can be acknowledged."}), 400
+
+    slot = run_query(
+        "SELECT slot_datetime FROM service_slots WHERE slot_id = %s",
+        (booking["slot_id"],), fetch="one")
+    vehicle = run_query(
+        "SELECT brand, model FROM vehicles WHERE vehicle_id = %s",
+        (booking["vehicle_id"],), fetch="one")
+
+    slot_dt = slot["slot_datetime"] if slot else None
+    vehicle_name = f"{vehicle['brand']} {vehicle['model']}" if vehicle else "your vehicle"
+    slot_str = slot_dt.strftime("%a, %b %d at %I:%M %p") if hasattr(slot_dt, "strftime") else str(slot_dt)
+
+    est_total = "—"
+    try:
+        raw = booking["estimate_data"]
+        est_data = json.loads(raw) if isinstance(raw, str) else raw
+        t = est_data.get("total")
+        if t:
+            est_total = f"₱{float(t):,.2f}"
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+
+    run_query(
+        "UPDATE service_bookings SET status = 'confirmed' WHERE booking_id = %s",
+        (booking_id,))
+
+    fire_notif(
+        user_id=booking["customer_id"],
+        title="Repair Confirmed",
+        message=f"Your repair for {vehicle_name} on {slot_str} has been confirmed! Total estimate: {est_total}. Please bring your vehicle on time. You can view the full estimate details in your portal.",
+        channel="in_app",
+        ref_type="service_bookings",
+        ref_id=booking_id,
+    )
+
+    assigned_to = booking.get("assigned_to")
+    if assigned_to:
+        fire_notif(
+            user_id=assigned_to,
+            title="Customer Confirmed Repair",
+            message=f"The customer has acknowledged the estimate for booking #{booking_id} ({vehicle_name}) and confirmed they will proceed. Status is now 'confirmed'.",
+            channel="in_app",
+            ref_type="service_bookings",
+            ref_id=booking_id,
+        )
+    else:
+        broadcast_notif(
+            role="service_staff",
+            title="Customer Confirmed Repair",
+            message=f"Booking #{booking_id} ({vehicle_name}) has been confirmed by the customer.",
+            channel="in_app",
+            ref_type="service_bookings",
+            ref_id=booking_id,
+        )
+
+    audit_log(session["user"], "PUT acknowledge-estimate",
+              "service_bookings", booking_id,
+              json.dumps(booking["status"], default=str),
+              json.dumps({"status": "confirmed"}, default=str))
+    return jsonify({"message": "Thank you! Your repair has been confirmed. Please bring your vehicle on time."}), 200
+
+
 def signEstimateHandler(booking_id):
     """
     Customer signs the estimate, setting status to 'in_progress'.
@@ -594,6 +903,9 @@ def signEstimateHandler(booking_id):
 
     if booking["status"] != "awaiting_signature":
         return jsonify({"message": "Only estimates awaiting signature can be signed."}), 409
+
+    if session["role"] == "customer" and booking["customer_id"] != session["user"]:
+        return jsonify({"message": "This booking does not belong to you."}), 403
 
     run_query(
         "UPDATE service_bookings SET status = 'in_progress' WHERE booking_id = %s",
@@ -769,7 +1081,7 @@ def updateWarrantyStatusHandler(claim_id, new_status):
     if new_status not in ["under_review", "approved", "rejected", "resolved"]:
         return jsonify({"message": "Invalid status."}), 400
 
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     resolution = data.get("resolution_text")
 
     if new_status == "rejected" and not resolution:
@@ -815,15 +1127,50 @@ def updateWarrantyStatusHandler(claim_id, new_status):
 
         conn.commit()
 
+        # Fetch customer info for email notifications
+        customer = run_query(
+            "SELECT email, username FROM users WHERE user_id = %s",
+            (claim["customer_id"],), fetch="one")
+        portal_url = f"http://{get_local_ip()}:5173"
+        booking_link = f"{portal_url}/portal/service"
+
         if new_status == "approved":
             fire_notif(claim["customer_id"], "Warranty Approved",
-                       "Your warranty claim has been approved.", "in_app",
+                       f"Your warranty claim #{claim_id} has been approved! You may now bring your vehicle to our dealership for service. Please book a service appointment through your portal.",
+                       "in_app",
                        "warranty_claims", claim_id)
+            if customer:
+                try:
+                    from flask import copy_current_request_context
+                    import threading
+
+                    @copy_current_request_context
+                    def _send_warranty_approved():
+                        from services.mail_service import send_warranty_approved
+                        send_warranty_approved(customer["email"], customer["username"], claim_id, booking_link)
+
+                    threading.Thread(target=_send_warranty_approved, daemon=True).start()
+                except Exception:
+                    pass
 
         if new_status == "rejected":
             fire_notif(claim["customer_id"], "Warranty Rejected",
-                       f"Your warranty claim was rejected: {resolution}", "in_app",
+                       f"Your warranty claim #{claim_id} was not covered under warranty: {resolution}. You can still book a repair service through your portal.",
+                       "in_app",
                        "warranty_claims", claim_id)
+            if customer:
+                try:
+                    from flask import copy_current_request_context
+                    import threading
+
+                    @copy_current_request_context
+                    def _send_warranty_rejected():
+                        from services.mail_service import send_warranty_rejected
+                        send_warranty_rejected(customer["email"], customer["username"], claim_id, resolution, booking_link)
+
+                    threading.Thread(target=_send_warranty_rejected, daemon=True).start()
+                except Exception:
+                    pass
 
         if new_status == "resolved":
             fire_notif(claim["customer_id"], "Warranty Resolved",

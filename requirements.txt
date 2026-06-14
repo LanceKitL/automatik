@@ -7,5 +7,7 @@ flask_mail
 flask-socketio
 flask-caching
 langchain
-lanchain_core
+python-dotenv
+python-dateutil
+langchain_core
 langchain-nvidia-ai-endpoints

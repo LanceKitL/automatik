@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { getFinanceInsuranceDetail, updateFinanceInsurance } from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
 	import { Shield, ArrowLeft, Save } from '@lucide/svelte';
 	import Loader from '$lib/components/Loader.svelte';
 
@@ -11,7 +12,6 @@
 	let loading = $state(true);
 	let editing = $state(false);
 	let saving = $state(false);
-	let message = $state('');
 	let form = $state({ provider_name: '', policy_number: '', coverage_type: '', start_date: '', end_date: '', status: '' });
 
 	onMount(async () => {
@@ -25,7 +25,7 @@
 			form.end_date = record?.end_date ? String(record.end_date).slice(0, 10) : '';
 			form.status = (record?.status as string) ?? 'active';
 		} catch {
-			// ignore
+			toast.error('Failed to load insurance detail.');
 		} finally {
 			loading = false;
 		}
@@ -33,7 +33,6 @@
 
 	async function save() {
 		saving = true;
-		message = '';
 		try {
 			await updateFinanceInsurance(insuranceId, {
 				provider_name: form.provider_name,
@@ -42,12 +41,12 @@
 				end_date: form.end_date,
 				status: form.status,
 			});
-			message = 'Insurance record updated.';
+			toast.success('Insurance record updated.');
 			editing = false;
 			const res = await getFinanceInsuranceDetail(insuranceId);
 			record = res.data;
 		} catch (e: unknown) {
-			message = e instanceof Error ? e.message : 'Error updating.';
+			toast.error(e instanceof Error ? e.message : 'Error updating insurance.');
 		} finally {
 			saving = false;
 		}
@@ -65,8 +64,6 @@
 	<a href="/finance_staff/insurance" class="back-link" onclick={(e) => { e.preventDefault(); goto('/finance_staff/insurance'); }}>
 		<ArrowLeft size={14} /> Back to Insurance
 	</a>
-
-	{#if message}<div class="msg">{message}</div>{/if}
 
 	{#if loading}
 		<div class="loader"><Loader /></div>
@@ -153,7 +150,6 @@
 	.page { font-family:var(--font-sans); padding:2rem 1.5rem; max-width:1000px; margin:0 auto; }
 	.back-link { display:inline-flex; align-items:center; gap:4px; font-size:12px; color:var(--primary-light); text-decoration:none; margin-bottom:0.75rem; }
 	.back-link:hover { text-decoration:underline; }
-	.msg { padding:0.5rem 0.75rem; background:#ecfdf5; color:#059669; border-radius:var(--radius-sm); font-size:13px; margin-bottom:1rem; }
 	.loader { display:grid; place-items:center; height:30vh; }
 	.page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
 	h1 { font-size:22px; font-weight:700; color:var(--text-dark); margin:0; display:flex; align-items:center; gap:10px; }

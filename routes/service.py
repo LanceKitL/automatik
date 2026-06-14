@@ -8,9 +8,12 @@ from controllers.serviceController import (
     deleteServiceSlotHandler,
     listMyBookingsHandler,
     createBookingHandler,
+    createGuestBookingHandler,
     updateBookingStatusHandler,
     listWarrantyClaimsHandler,
     submitWarrantyClaimHandler,
+    signEstimateHandler,
+    acknowledgeEstimateHandler,
 )
 
 service_bp = Blueprint("service", __name__)
@@ -64,11 +67,30 @@ def create_booking():
     return createBookingHandler()
 
 
+@service_bp.route("/bookings/guest", methods=["POST"])
+def create_guest_booking():
+    return createGuestBookingHandler()
+
+
 @service_bp.route("/bookings/<int:booking_id>/cancel", methods=["PUT"])
 @logged_in_required
 @role_required("customer")
 def cancel_booking(booking_id):
     return updateBookingStatusHandler(booking_id, "cancelled")
+
+
+@service_bp.route("/bookings/<int:booking_id>/sign", methods=["PUT"])
+@logged_in_required
+@role_required("customer")
+def sign_booking(booking_id):
+    return signEstimateHandler(booking_id)
+
+
+@service_bp.route("/bookings/<int:booking_id>/acknowledge", methods=["PUT"])
+@logged_in_required
+@role_required("customer")
+def acknowledge_booking(booking_id):
+    return acknowledgeEstimateHandler(booking_id)
 
 
 # --- Warranty (Customer: POST/GET) ---

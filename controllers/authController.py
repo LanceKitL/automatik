@@ -313,17 +313,17 @@ def changePassword():
     # get the current password
     user = run_query("SELECT hashed_password FROM users WHERE user_id = %s", (user_id,), fetch="one")
 
-    #check if old_password is equal to the current password
-    if check_password_hash(user['hashed_password'], new_password):
-        return jsonify({"message": "New password cannot be the same as the old password."}), 400
-    
-    #check if new_password is equal to the confirm_password\
-    if new_password != confirm_password:
-        return jsonify({"message": "password doesn't match."}), 400
-    
     # check if the old_password matched
     if not check_password_hash(user["hashed_password"], old_password):
         return jsonify({"message": "Current password does not match."}), 400
+    
+    #check if new_password is equal to the confirm_password
+    if new_password != confirm_password:
+        return jsonify({"message": "password doesn't match."}), 400
+
+    #check if old_password is equal to the current password
+    if check_password_hash(user['hashed_password'], new_password):
+        return jsonify({"message": "New password cannot be the same as the old password."}), 400
 
     # hash the new password
     hashed_password = generate_password_hash(new_password)
@@ -440,7 +440,17 @@ def verifyEmail():
     
     from utils.log import get_local_ip
     portal_url = f"http://{get_local_ip()}:5173"
-    welcome_user(user["email"], 'email/welcome.html', portal_url=portal_url)  
+    try:
+        from flask import copy_current_request_context
+        import threading
+
+        @copy_current_request_context
+        def _send_welcome():
+            welcome_user(user["email"], 'email/welcome.html', portal_url=portal_url)
+
+        threading.Thread(target=_send_welcome, daemon=True).start()
+    except Exception:
+        pass
     
     return render_template('email_verification_ok.html')
     
@@ -475,7 +485,14 @@ def forgotPassword():
         return jsonify({"message": "Token generation failed."}), 500
 
     reset_url = f"http://localhost:5173/auth/reset-password?token_id={token['token_id']}&raw_token={token['raw_token']}"
-    send_password_reset(email, reset_url)
+    from flask import copy_current_request_context
+    import threading
+
+    @copy_current_request_context
+    def _send_reset():
+        send_password_reset(email, reset_url)
+
+    threading.Thread(target=_send_reset, daemon=True).start()
 
     return jsonify({"message": "If that email exists, a reset link has been sent."}), 200
 

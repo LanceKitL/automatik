@@ -4,23 +4,25 @@
 	import { goto } from '$app/navigation';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Topbar from '$lib/components/Topbar.svelte';
+	import { connectSocket } from '$lib/stores/socket.svelte';
 
 	let { children } = $props();
 
 	onMount(async () => {
+		connectSocket();
 		const ok = await auth.checkAuth();
 		if (!ok || auth.role !== 'agent') {
 			goto('/auth/login');
 		}
 	});
 </script>
-<head>
-	<title>Sales Agent</title>
-</head>
+<header>
+	<title>Agent Portal</title>
+</header>
 <div class="layout">
 	<Sidebar />
 	<div class="main-area">
-		<Topbar />
+	<Topbar/>
 		<main>
 			{@render children()}
 		</main>
@@ -30,18 +32,19 @@
 <style>
 	.layout {
 		display: flex;
-	}
+	}	
+	
 	.main-area {
 		flex: 1;
-		margin-left: 16rem;
 		display: flex;
 		flex-direction: column;
-		min-height: 100vh;
 		background: var(--bg-main);
+		min-height: 100vh;
+		margin-left: 16rem;
 	}
-	/* main {
+	main {
 		flex: 1;
-		display: flex;
-		flex-direction: column;
-	} */
+		padding: 2rem;
+		background: #f5f7fb;
+	}
 </style>

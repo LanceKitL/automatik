@@ -11,16 +11,29 @@ from validators.middleware import (
 from controllers.agentController import (
     # AGENT
     getDashboard,
+    getTestDrives,
     getInquiries,
     getTasks,
     createTask,
     updateTask,
     deleteTask,
+    agentSubmitInquiry,
+    agentBookTestDrive,
     # ADMIN 
     getCommissions,
     getCommissionsAdmin,
     payCommission,
     agentPerformance
+)
+
+from controllers.vehicleController import (
+    getVehicles,
+    showVehicle,
+)
+
+from controllers.serviceController import (
+    updateBookingStatusHandler,
+    assignToSelfHandler,
 )
 
 agent_bp = Blueprint("agent_portal", __name__)
@@ -33,6 +46,41 @@ def get_dashboard():
     Fetch all the dashboard information | data
     """
     return getDashboard()
+
+@agent_bp.route("/agent/test-drives", methods=["GET"])
+@logged_in_required
+@role_required("agent")
+def get_test_drives():
+    """List test drive bookings for the agent portal."""
+    return getTestDrives()
+
+@agent_bp.route("/agent/test-drives/<int:booking_id>/assign", methods=["PUT"])
+@logged_in_required
+@role_required("agent")
+def assign_test_drive(booking_id):
+    """Self-assign a test drive booking."""
+    return assignToSelfHandler(booking_id)
+
+@agent_bp.route("/agent/test-drives/<int:booking_id>/confirm", methods=["PUT"])
+@logged_in_required
+@role_required("agent")
+def confirm_test_drive(booking_id):
+    """Confirm a test drive booking."""
+    return updateBookingStatusHandler(booking_id, "confirmed")
+
+@agent_bp.route("/agent/test-drives/<int:booking_id>/complete", methods=["PUT"])
+@logged_in_required
+@role_required("agent")
+def complete_test_drive(booking_id):
+    """Complete a test drive booking."""
+    return updateBookingStatusHandler(booking_id, "completed")
+
+@agent_bp.route("/agent/test-drives/<int:booking_id>/cancel", methods=["PUT"])
+@logged_in_required
+@role_required("agent")
+def cancel_test_drive(booking_id):
+    """Cancel a test drive booking."""
+    return updateBookingStatusHandler(booking_id, "cancelled")
 
 @agent_bp.route("/agent/inquiries", methods=["GET"])
 @logged_in_required
@@ -95,6 +143,48 @@ def get_commissions():
     This route display all the commission/s of the CURRENT AGENT LOGGED IN.
     """
     return getCommissions()
+
+@agent_bp.route("/agent/vehicles", methods=["GET"])
+@logged_in_required
+@role_required("agent")
+def agent_vehicles():
+    """GET /agent/vehicles
+    List all available vehicles for walk-in browsing.
+    """
+    return getVehicles()
+
+
+@agent_bp.route("/agent/vehicles/<int:vehicle_id>", methods=["GET"])
+@logged_in_required
+@role_required("agent")
+def agent_vehicle_detail(vehicle_id):
+    """GET /agent/vehicles/<vehicle_id>
+    View details of a specific vehicle.
+    """
+    return showVehicle(vehicle_id)
+
+
+@agent_bp.route("/agent/inquiries", methods=["POST"])
+@logged_in_required
+@role_required("agent")
+def agent_create_inquiry():
+    """POST /agent/inquiries
+    Create an inquiry on behalf of a walk-in guest. Auto self-assigns.
+    Body: { vehicle_id, message, guest_name, guest_email, guest_number? }
+    """
+    return agentSubmitInquiry()
+
+
+@agent_bp.route("/agent/bookings", methods=["POST"])
+@logged_in_required
+@role_required("agent")
+def agent_create_booking():
+    """POST /agent/bookings
+    Book a test drive for a walk-in guest.
+    Body: { slot_id, vehicle_id, guest_name, guest_email }
+    """
+    return agentBookTestDrive()
+
 
 #-------- ADMIN ROUTES -------- 
 @agent_bp.route("/admin/commissions", methods=["GET"])

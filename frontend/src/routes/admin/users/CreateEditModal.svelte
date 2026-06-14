@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toast } from 'svelte-sonner';
 	import type { CreateUserPayload } from '$lib/services/api';
 
 	let {
@@ -14,7 +15,6 @@
 	} = $props();
 
 	let saving = $state(false);
-	let error = $state<string | null>(null);
 
 	let form = $state<CreateUserPayload>({
 		username: '',
@@ -57,7 +57,6 @@
 
 	async function handleSubmit(e: Event) {
 		e.preventDefault();
-		error = null;
 		saving = true;
 
 		try {
@@ -84,21 +83,23 @@
 					await updateUserProfile(user.user_id as number, profilePayload);
 				}
 
+				toast.success('User updated.');
 				onSaved();
 				onClose();
 			} else {
 				// Create mode
 				if (!form.password) {
-					error = 'Password is required for new users.';
+					toast.error('Password is required for new users.');
 					saving = false;
 					return;
 				}
 				await createUser(form);
+				toast.success('User created.');
 				onSaved();
 				onClose();
 			}
 		} catch (e) {
-			error = (e as Error).message;
+			toast.error((e as Error).message || 'Failed to save user.');
 		} finally {
 			saving = false;
 		}
@@ -111,8 +112,6 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 		<div class="modal" onclick={(e) => e.stopPropagation()}>
 			<h2>{user ? 'Edit User' : 'Create User'}</h2>
-
-			{#if error}<p class="error">{error}</p>{/if}
 
 			<form onsubmit={handleSubmit}>
 				<div class="grid">
@@ -199,7 +198,6 @@
 		overflow-y: auto;
 	}
 	h2 { margin: 0 0 16px; }
-	.error { color: var(--danger); margin-bottom: 12px; }
 	.grid {
 		display: grid;
 		grid-template-columns: 1fr 1fr;

@@ -313,7 +313,7 @@ def getSale(sale_id):
     payments = run_query(
         """
         SELECT p.payment_id, p.amount_paid, p.payment_method,
-               p.payment_date, u.username AS recorded_by_name
+               p.payment_date, p.proof_of_payment, u.username AS recorded_by_name
         FROM payments p
         JOIN users u
         ON p.recorded_by = u.user_id
@@ -568,11 +568,18 @@ def createSale():
         if _new_customer_ctx:
             try:
                 from services.mail_service import welcome_user
+                from flask import copy_current_request_context
+                import threading
                 portal_url = f"http://{get_local_ip()}:5173"
-                welcome_user(_new_customer_ctx["guest_email"], "email/welcome.html",
-                             username=_new_customer_ctx["username"],
-                             temp_password=_new_customer_ctx["temp_password"],
-                             portal_url=portal_url)
+
+                @copy_current_request_context
+                def _send_welcome():
+                    welcome_user(_new_customer_ctx["guest_email"], "email/welcome.html",
+                                 username=_new_customer_ctx["username"],
+                                 temp_password=_new_customer_ctx["temp_password"],
+                                 portal_url=portal_url)
+
+                threading.Thread(target=_send_welcome, daemon=True).start()
             except Exception:
                 pass
             try:
@@ -584,8 +591,15 @@ def createSale():
 
         # Sale confirmation email
         try:
+            from flask import copy_current_request_context
+            import threading
             vehicle_name = f"{vehicle['brand']} {vehicle['model']}"
-            send_sale_confirmation(customer["email"], customer["username"], sale_id, vehicle_name, selling_price)
+
+            @copy_current_request_context
+            def _send_sale_confirm():
+                send_sale_confirmation(customer["email"], customer["username"], sale_id, vehicle_name, selling_price)
+
+            threading.Thread(target=_send_sale_confirm, daemon=True).start()
         except Exception:
             pass
 
@@ -955,7 +969,7 @@ def getLoan(loan_id):
         return jsonify({"message": "Loan not found."}), 404
 
     schedule = run_query("""
-        SELECT a.*, p.proof_of_payment, p.payment_id
+        SELECT a.*, p.proof_of_payment, p.payment_id, p.review_status
         FROM amortization_schedule a
         LEFT JOIN payments p ON a.schedule_id = p.schedule_id AND p.payment_allocation = 'amortization'
         WHERE a.loan_id = %s
@@ -1110,7 +1124,14 @@ def updateLoanStatus(loan_id):
 
         if customer:
             try:
-                send_loan_status(customer["email"], name, bank_approval_status, loan["sale_id"])
+                from flask import copy_current_request_context
+                import threading
+
+                @copy_current_request_context
+                def _send_loan_status():
+                    send_loan_status(customer["email"], name, bank_approval_status, loan["sale_id"])
+
+                threading.Thread(target=_send_loan_status, daemon=True).start()
             except Exception:
                 pass
 

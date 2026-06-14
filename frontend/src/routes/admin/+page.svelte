@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { toast } from 'svelte-sonner';
   import { getAdminDashboard } from '$lib/services/api';
   import type { AdminDashboardResponse } from '$lib/services/api';
 
@@ -56,12 +57,12 @@
       animateValue(setAnimatedRevenue, data.total_revenue);
       animateValue(setAnimatedActiveSales, data.active_sales);
     } catch {
-      // offline / error
+      toast.error('Failed to load dashboard.');
     } finally {
       loading = false;
     }
   });
-</script>
+  </script>
 
 {#if loading}
   <div class="loading-state">
@@ -73,7 +74,10 @@
     <!-- Top Bar -->
     <div class="top-bar">
       <div class="logo-row">
-        <h1>Admin Dashboard</h1>
+        <div>
+          <h1>Admin Dashboard</h1>
+          <p class="title-subtitle">Good day, admin! What's on your mind today?</p>
+        </div>
       </div>
       <span class="timestamp">{timestamp}</span>
     </div>
@@ -263,6 +267,7 @@
     align-items: center;
     gap: 10px;
   }
+  .title-subtitle { font-size: 13px; color: #9ca3af; margin: 2px 0 0; font-weight: 400; }
   h1 {
     font-size: 20px;
     font-weight: 700;

@@ -26,6 +26,8 @@ def fire_notif(user_id, title, message, channel, ref_type, ref_id):
         'title': title,
         'message': message,
         'channel': channel,
+        'ref_type': ref_type,
+        'ref_id': ref_id,
         'created_at': created_at.isoformat()
     }, room=f"user_{user_id}")
 
@@ -49,6 +51,8 @@ def broadcast_notif(role, title, message, channel, ref_type, ref_id):
         'title': title,
         'message': message,
         'channel': channel,
+        'ref_type': ref_type,
+        'ref_id': ref_id,
         'created_at': created_at.isoformat()
     }, room=f"role_{role}")
 

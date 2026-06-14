@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { X, ExternalLink } from '@lucide/svelte';
 	import {
 		getSale,
 		updateSaleStatus,
 		updateContract,
-		addInsurance,
-		updateInsurance,
 		recordPayment,
+		adminUploadPaymentProof,
 		type SaleItem,
 		type SingleUserResponse
 	} from '$lib/services/api';
@@ -31,38 +32,50 @@
 	let contractStatus = $state('');
 	let contractUpdating = $state(false);
 
-	// ── Insurance add ────────────────────────────────────────────────────────
-	let insuranceProvider = $state('');
-	let insurancePolicy = $state('');
-	let insuranceStart = $state('');
-	let insuranceEnd = $state('');
-	let insuranceAdding = $state(false);
-
 	// ── Record Payment ───────────────────────────────────────────────────────
 	let payAmount = $state<number | ''>('');
 	let payMethod = $state('cash');
 	let payAllocation = $state('full_cash');
 	let payReference = $state('');
 	let payRecording = $state(false);
+	let payFile = $state<File | null>(null);
+	let payUploading = $state(false);
+
+	// ── Proof image modal ────────────────────────────────────────────────────
+	let showProofModal = $state(false);
+	let proofImageUrl = $state('');
 
 	async function handleRecordPayment() {
 		if (!detail || payAmount === '' || !payMethod) return;
-		actionError = '';
 		payRecording = true;
 		try {
-			await recordPayment(sale.sales.sale_id, {
+			const res = await recordPayment(sale.sales.sale_id, {
 				amount_paid: Number(payAmount),
 				payment_method: payMethod,
 				payment_allocation: payAllocation,
 				reference: payReference || null
 			});
+			// If a file was selected, upload it as proof
+			if (payFile) {
+				payUploading = true;
+				try {
+					await adminUploadPaymentProof(res.payment_id, payFile);
+				} catch (uploadErr: unknown) {
+					toast.error(uploadErr instanceof Error ? uploadErr.message : 'Payment recorded but proof upload failed.');
+				} finally {
+					payUploading = false;
+				}
+			}
+			toast.success('Payment recorded.');
 			payAmount = '';
 			payMethod = 'cash';
 			payAllocation = 'full_cash';
 			payReference = '';
+			payFile = null;
+			await loadDetail();
 			onupdated();
 		} catch (e: unknown) {
-			actionError = e instanceof Error ? e.message : 'Failed to record payment.';
+			toast.error(e instanceof Error ? e.message : 'Failed to record payment.');
 		} finally {
 			payRecording = false;
 		}
@@ -72,9 +85,8 @@
 	let statusUpdating = $state(false);
 
 	// ── Generic action state ──────────────────────────────────────────────────
-	let actionError = $state('');
 
-	onMount(async () => {
+	async function loadDetail() {
 		try {
 			const res = await getSale(sale.sales.sale_id);
 			detail = res.data;
@@ -87,59 +99,35 @@
 		} finally {
 			loading = false;
 		}
-	});
+	}
+
+	onMount(loadDetail);
 
 	async function handleUpdateContract() {
 		if (!detail) return;
-		actionError = '';
 		contractUpdating = true;
 		try {
 			const payload: Record<string, unknown> = {};
 			if (contractUrl) payload.contract_url = contractUrl;
 			if (contractStatus) payload.status = contractStatus;
 			await updateContract(sale.sales.sale_id, payload);
+			toast.success('Contract updated.');
 			onupdated();
 		} catch (e: unknown) {
-			actionError = e instanceof Error ? e.message : 'Failed to update contract.';
+			toast.error(e instanceof Error ? e.message : 'Failed to update contract.');
 		} finally {
 			contractUpdating = false;
 		}
 	}
 
-	async function handleAddInsurance() {
-		actionError = '';
-		if (!insuranceProvider || !insurancePolicy || !insuranceStart || !insuranceEnd) {
-			actionError = 'All insurance fields are required.';
-			return;
-		}
-		insuranceAdding = true;
-		try {
-			await addInsurance(sale.sales.sale_id, {
-				provider_name: insuranceProvider,
-				policy_number: insurancePolicy,
-				start_date: insuranceStart,
-				end_date: insuranceEnd
-			});
-			insuranceProvider = '';
-			insurancePolicy = '';
-			insuranceStart = '';
-			insuranceEnd = '';
-			onupdated();
-		} catch (e: unknown) {
-			actionError = e instanceof Error ? e.message : 'Failed to add insurance.';
-		} finally {
-			insuranceAdding = false;
-		}
-	}
-
 	async function handleUpdateStatus(newStatus: string) {
-		actionError = '';
 		statusUpdating = true;
 		try {
 			await updateSaleStatus(sale.sales.sale_id, newStatus);
+			toast.success('Status updated.');
 			onupdated();
 		} catch (e: unknown) {
-			actionError = e instanceof Error ? e.message : 'Failed to update status.';
+			toast.error(e instanceof Error ? e.message : 'Failed to update status.');
 		} finally {
 			statusUpdating = false;
 		}
@@ -169,8 +157,8 @@
 		{:else if detailError}
 				<div class="form-error">{detailError}</div>
 			{:else if detail}
-				{#if actionError}
-					<div class="form-error">{actionError}</div>
+				{#if detailError}
+					<div class="form-error">{detailError}</div>
 				{/if}
 
 				<!-- Sale Info -->
@@ -236,31 +224,6 @@
 					{/if}
 				</section>
 
-				<!-- Insurance -->
-				<section class="section">
-					<h3>Insurance Records</h3>
-					{#if detail.insurance && detail.insurance.length > 0}
-						{#each detail.insurance as ins}
-							<div class="insurance-card">
-								<div class="info-row"><span class="label">Provider</span><span class="value">{ins.provider_name}</span></div>
-								<div class="info-row"><span class="label">Policy #</span><span class="value mono">{ins.policy_number}</span></div>
-								<div class="info-row"><span class="label">Period</span><span class="value">{formatDate(ins.start_date)} – {formatDate(ins.end_date)}</span></div>
-							</div>
-						{/each}
-					{:else}
-						<p class="empty-note">No insurance records.</p>
-					{/if}
-					<div class="inline-form">
-						<input type="text" placeholder="Provider" bind:value={insuranceProvider} />
-						<input type="text" placeholder="Policy #" bind:value={insurancePolicy} />
-						<input type="date" bind:value={insuranceStart} />
-						<input type="date" bind:value={insuranceEnd} />
-						<button class="btn-sm btn-primary" onclick={handleAddInsurance} disabled={insuranceAdding}>
-							{insuranceAdding ? '…' : 'Add Insurance'}
-						</button>
-					</div>
-				</section>
-
 				<!-- Payments -->
 				<section class="section">
 					<h3>Payments</h3>
@@ -272,6 +235,11 @@
 								<span class="method">{p.payment_method}</span>
 								<span class="allocation">{p.payment_allocation ?? '—'}</span>
 								<span class="recorder">{p.recorded_by_name}</span>
+								{#if p.proof_of_payment}
+									<button class="proof-link" onclick={() => { proofImageUrl = p.proof_of_payment; showProofModal = true; }}>
+										<ExternalLink size={10} /> View
+									</button>
+								{/if}
 							</div>
 						{/each}
 					{:else}
@@ -288,15 +256,11 @@
 						</select>
 						<select bind:value={payAllocation}>
 							<option value="full_cash">Full Cash</option>
-							<option value="downpayment">Down Payment</option>
-							<option value="amortization">Amortization</option>
-							<option value="service_fee">Service Fee</option>
-							<option value="maintenance">Maintenance</option>
-							<option value="repair">Repair</option>
 						</select>
 						<input type="text" placeholder="Reference (optional)" bind:value={payReference} />
-						<button class="btn-sm btn-primary" onclick={handleRecordPayment} disabled={payRecording}>
-							{payRecording ? '…' : 'Record Payment'}
+						<input type="file" accept="image/*,.pdf" onchange={(e) => { const target = e.target as HTMLInputElement; payFile = target.files?.[0] ?? null; }} />
+						<button class="btn-sm btn-primary" onclick={handleRecordPayment} disabled={payRecording || payUploading}>
+							{payUploading ? 'Uploading…' : payRecording ? '…' : 'Record Payment'}
 						</button>
 					</div>
 				</section>
@@ -316,22 +280,41 @@
 	</div>
 </div>
 
+<!-- Proof Image Modal -->
+{#if showProofModal}
+	<div class="modal-overlay" onclick={() => showProofModal = false}>
+		<div class="proof-modal" onclick={(e) => e.stopPropagation()}>
+			<div class="proof-modal-header">
+				<h2>Proof of Payment</h2>
+				<button class="close-btn" onclick={() => showProofModal = false}>×</button>
+			</div>
+			<div class="proof-modal-body">
+				{#if proofImageUrl?.match(/\.(png|jpe?g|gif|webp|bmp)$/i)}
+					<img src={proofImageUrl} alt="Proof of payment" class="proof-img" />
+				{:else}
+					<a href={proofImageUrl} target="_blank" rel="noopener noreferrer" class="proof-fallback">Open file in new tab</a>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
 	.overlay {
 		position: fixed; inset: 0; background: rgba(0,0,0,0.35);
-		z-index: 1000; display: flex; justify-content: flex-end;
+		z-index: 1000; display: flex; align-items: center; justify-content: center;
 	}
 
 	.drawer {
-		width: 32rem; max-width: 95vw; height: 100vh;
-		background: var(--bg-card); box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+		width: 32rem; max-width: 95vw; max-height: 85vh;
+		background: var(--bg-card); box-shadow: 0 20px 60px rgba(0,0,0,0.15);
 		display: flex; flex-direction: column; overflow: hidden;
-		animation: slideIn 0.2s ease-out;
+		animation: fadeIn 0.2s ease-out;
 		font-family: var(--font-sans);
 	}
-	@keyframes slideIn {
-		from { transform: translateX(100%); }
-		to { transform: translateX(0); }
+	@keyframes fadeIn {
+		from { opacity: 0; transform: scale(0.96); }
+		to { opacity: 1; transform: scale(1); }
 	}
 
 	.drawer-header {
@@ -347,11 +330,6 @@
 
 	.drawer-body {
 		padding: 1.25rem 1.5rem; overflow-y: auto; flex: 1;
-	}
-
-	.form-error {
-		background: var(--danger-bg); color: var(--danger); padding: 0.5rem 0.75rem;
-		border-radius: var(--radius-sm); font-size: 0.8rem; margin-bottom: 0.75rem;
 	}
 
 	/* ── Sections ───────────────────────────── */
@@ -404,13 +382,6 @@
 	.btn-primary { background: var(--primary); color: var(--accent); }
 	.btn-primary:hover:not(:disabled) { opacity: 0.85; }
 
-	/* Insurance card */
-	.insurance-card {
-		background: var(--bg-muted); border: 1px solid var(--border);
-		border-radius: var(--radius-md); padding: 0.5rem 0.75rem; margin-bottom: 0.5rem;
-	}
-	.insurance-card .info-row:last-child { border-bottom: none; }
-
 	/* Payment row */
 	.payment-row {
 		display: flex; gap: 0.75rem; align-items: center;
@@ -420,7 +391,14 @@
 	.payment-row .mono { font-family: var(--font-mono); font-weight: 600; color: #059669; min-width: 80px; }
 	.payment-row .date { color: var(--text-light); min-width: 100px; }
 	.payment-row .method { color: var(--text-dark); background: var(--bg-hover); padding: 1px 6px; border-radius: var(--radius-sm); }
-	.payment-row .recorder { color: var(--text-muted); font-size: 0.75rem; margin-left: auto; }
+	.payment-row .recorder { color: var(--text-muted); font-size: 0.75rem; }
+	.payment-row .proof-link {
+		display: inline-flex; align-items: center; gap: 3px;
+		font-size: 10px; font-weight: 600; color: #7c9df7;
+		background: none; border: none; cursor: pointer; padding: 2px 6px;
+		border-radius: 4px; font-family: inherit; flex-shrink: 0;
+	}
+	.payment-row .proof-link:hover { background: #eef2ff; }
 
 	/* Status actions */
 	.actions-section { margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem; }
@@ -446,4 +424,19 @@
 		animation: spin .7s linear infinite;
 	}
 	@keyframes spin { to { transform: rotate(360deg); } }
+
+	/* Proof image modal */
+	.proof-modal {
+		background: #fff; border-radius: 12px; width: 600px; max-width: 94vw;
+		max-height: 90vh; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+		display: flex; flex-direction: column;
+	}
+	.proof-modal-header {
+		display: flex; align-items: center; justify-content: space-between;
+		padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
+	}
+	.proof-modal-header h2 { font-size: 16px; font-weight: 700; color: var(--text-primary); margin: 0; }
+	.proof-modal-body { padding: 1.25rem; display: flex; align-items: center; justify-content: center; overflow: auto; }
+	.proof-img { max-width: 100%; max-height: 65vh; object-fit: contain; border-radius: 8px; }
+	.proof-fallback { font-size: 14px; color: #7c9df7; text-decoration: underline; padding: 2rem; }
 </style>

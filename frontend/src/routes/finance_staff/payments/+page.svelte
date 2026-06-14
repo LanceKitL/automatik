@@ -1,18 +1,29 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getFinancePayments, createFinancePayment, getFinanceLoans } from '$lib/services/api';
+	import { getFinancePayments, createFinancePayment, getFinanceLoans, reviewPayment, resolvePhotoUrl } from '$lib/services/api';
 	import DataTable from '$lib/components/DataTable.svelte';
-	import { Eye, Plus, X, AlertTriangle, RefreshCw } from '@lucide/svelte';
+	import { toast } from 'svelte-sonner';
+	import { Eye, Plus, X, AlertTriangle, RefreshCw, Check, Ban } from '@lucide/svelte';
 
 	let payments = $state<Record<string, unknown>[]>([]);
 	let loading = $state(true);
 	let search = $state('');
 	let filterMethod = $state<'all' | string>('all');
+	let filterReview = $state<'all' | 'pending_verification'>('all');
 	let dateFrom = $state('');
 	let dateTo = $state('');
 
 	// Record Payment modal
 	let showModal = $state(false);
+
+	// Review modal
+	let showReviewModal = $state(false);
+	let reviewTarget = $state<Record<string, unknown> | null>(null);
+	let reviewAction = $state<'verified' | 'rejected'>('verified');
+	let reviewNote = $state('');
+	let reviewing = $state(false);
+
+	let previewUrl = $state<string | null>(null);
 	let saving = $state(false);
 	let modalError = $state('');
 	let sales = $state<Record<string, unknown>[]>([]);
@@ -32,6 +43,7 @@
 		return payments.filter(p => {
 			const pm = String(p.payment_method ?? '').toLowerCase();
 			const matchMethod = filterMethod === 'all' || pm === filterMethod;
+			const matchReview = filterReview === 'all' || (p.review_status as string) === filterReview;
 			const matchDateFrom = !dateFrom || String(p.payment_date ?? '').slice(0, 10) >= dateFrom;
 			const matchDateTo = !dateTo || String(p.payment_date ?? '').slice(0, 10) <= dateTo;
 			const s = search.toLowerCase();
@@ -39,7 +51,7 @@
 				|| String(p.customer_name ?? '').toLowerCase().includes(s)
 				|| (String(p.brand ?? '') + ' ' + String(p.model ?? '')).toLowerCase().includes(s)
 				|| String(p.payment_id ?? '').toLowerCase().includes(s);
-			return matchMethod && matchDateFrom && matchDateTo && matchSearch;
+			return matchMethod && matchReview && matchDateFrom && matchDateTo && matchSearch;
 		});
 	}
 
@@ -68,12 +80,53 @@
 		return 'ab a-def';
 	}
 
+	function reviewLabel(rv: string | undefined): string {
+		if (rv === 'pending_verification') return 'Pending';
+		if (rv === 'verified') return 'Verified';
+		if (rv === 'rejected') return 'Rejected';
+		return '—';
+	}
+
+	function reviewClass(rv: string | undefined): string {
+		if (rv === 'pending_verification') return 'rb-pending';
+		if (rv === 'verified') return 'rb-verified';
+		if (rv === 'rejected') return 'rb-rejected';
+		return 'rb-def';
+	}
+
+	function openReview(p: Record<string, unknown>, action: 'verified' | 'rejected') {
+		reviewTarget = p;
+		reviewAction = action;
+		reviewNote = '';
+		showReviewModal = true;
+	}
+
+	async function handleReview() {
+		if (!reviewTarget) return;
+		if (reviewAction === 'rejected' && !reviewNote.trim()) {
+			toast.error('A rejection reason is required.');
+			return;
+		}
+		reviewing = true;
+		try {
+			await reviewPayment(reviewTarget.payment_id as number, reviewAction, reviewNote || undefined);
+			toast.success(reviewAction === 'verified' ? 'Payment approved' : 'Payment rejected');
+			showReviewModal = false;
+			await loadPayments();
+		} catch (e: unknown) {
+			const msg = e instanceof Error ? e.message : 'Review failed';
+			toast.error(msg);
+		} finally {
+			reviewing = false;
+		}
+	}
+
 	async function loadPayments() {
 		loading = true;
 		try {
 			const res = await getFinancePayments();
 			payments = res.data as Record<string, unknown>[];
-		} catch { /* ignore */ }
+		} catch { toast.error('Failed to load payments.'); }
 		finally { loading = false; }
 	}
 
@@ -81,7 +134,7 @@
 		try {
 			const res = await getFinanceLoans();
 			sales = res.data ?? [];
-		} catch { /* ignore */ }
+		} catch { toast.error('Failed to load sales data.'); }
 	}
 
 	onMount(async () => {
@@ -108,6 +161,7 @@
 				payment_allocation: payForm.payment_allocation,
 				reference: payForm.reference || null,
 			});
+			toast.success('Payment recorded successfully.');
 			showModal = false;
 			await loadPayments();
 		} catch (e: unknown) {
@@ -166,6 +220,10 @@
 				<button class="fp" class:active={filterMethod === 'bank_transfer'} onclick={() => filterMethod = 'bank_transfer'}>Bank</button>
 				<button class="fp" class:active={filterMethod === 'online'} onclick={() => filterMethod = 'online'}>Online</button>
 			</div>
+			<div class="filter-row">
+				<button class="fp" class:active={filterReview === 'all'} onclick={() => filterReview = 'all'}>All Status</button>
+				<button class="fp" class:active={filterReview === 'pending_verification'} onclick={() => filterReview = 'pending_verification'}>Pending Verification</button>
+			</div>
 			<div class="date-filters">
 				<input type="date" class="date-input" bind:value={dateFrom} title="From" />
 				<span class="date-sep">–</span>
@@ -179,7 +237,7 @@
 	{#if loading}
 		<div class="loading-state"><span class="spinner"></span><p>Loading payments…</p></div>
 	{:else}
-		<DataTable columns={['ID','Customer','Vehicle','Amount','Method','Allocation','Date','Recorded By','Proof']}>
+		<DataTable columns={['ID','Customer','Vehicle','Amount','Method','Allocation','Review','Date','Recorded By','Proof','Action']}>
 			{#each filtered() as p (p.payment_id)}
 				<tr>
 					<td class="td-id">{p.payment_id}</td>
@@ -188,22 +246,85 @@
 					<td class="td-amount">₱{Number(p.amount_paid).toLocaleString()}</td>
 					<td><span class="{methodBadgeClass(p.payment_method as string)}">{p.payment_method ?? '—'}</span></td>
 					<td><span class="{allocBadgeClass(p.payment_allocation as string)}">{p.payment_allocation ?? '—'}</span></td>
+					<td>
+						<span class="review-badge {reviewClass(p.review_status as string)}">{reviewLabel(p.review_status as string)}</span>
+					</td>
 					<td class="td-date">{p.payment_date ? String(p.payment_date).slice(0, 10) : '—'}</td>
 					<td class="td-rec">{p.recorded_by_name ?? '—'}</td>
 					<td class="td-proof">
 						{#if p.proof_of_payment}
-							<a href={String(p.proof_of_payment)} target="_blank" rel="noopener" class="proof-link" aria-label="View proof of payment"><Eye size={14} /></a>
+							<button onclick={() => previewUrl = String(p.proof_of_payment)} class="proof-btn" aria-label="View proof of payment"><Eye size={14} /></button>
+						{:else}
+							<span class="muted">—</span>
+						{/if}
+					</td>
+					<td class="td-action">
+						{#if (p.review_status as string) === 'pending_verification'}
+							<div class="review-actions">
+								<button class="btn-approve" onclick={() => openReview(p, 'verified')} title="Approve"><Check size={14} /></button>
+								<button class="btn-reject" onclick={() => openReview(p, 'rejected')} title="Reject"><Ban size={14} /></button>
+							</div>
 						{:else}
 							<span class="muted">—</span>
 						{/if}
 					</td>
 				</tr>
 			{:else}
-				<tr><td colspan="9" class="empty-state">No payments found.</td></tr>
+				<tr><td colspan="11" class="empty-state">No payments found.</td></tr>
 			{/each}
 		</DataTable>
 	{/if}
 </div>
+
+<!-- Review Modal -->
+{#if showReviewModal && reviewTarget}
+	<div class="modal-overlay" onclick={() => showReviewModal = false}>
+		<div class="modal" onclick={(e) => e.stopPropagation()}>
+			<div class="modal-header">
+				<h2>{reviewAction === 'verified' ? 'Approve' : 'Reject'} Payment</h2>
+				<button class="close-btn" onclick={() => showReviewModal = false}><X size={18} /></button>
+			</div>
+			<div class="modal-body">
+				<div style="font-size:13px; display:flex; flex-direction:column; gap:6px;">
+					<p style="margin:0;"><strong>Payment ID:</strong> #{reviewTarget.payment_id}</p>
+					<p style="margin:0;"><strong>Customer:</strong> {reviewTarget.customer_name}</p>
+					<p style="margin:0;"><strong>Amount:</strong> ₱{Number(reviewTarget.amount_paid).toLocaleString()}</p>
+					<p style="margin:0;"><strong>Schedule ID:</strong> {reviewTarget.schedule_id ?? '—'}</p>
+						{#if reviewTarget.proof_of_payment}
+							<p style="margin:0;">
+								<strong>Proof:</strong>
+								<button onclick={() => previewUrl = String(reviewTarget.proof_of_payment)} style="background:none; border:none; color:var(--primary); text-decoration:underline; cursor:pointer; font-size:13px; padding:0;">View Screenshot</button>
+							</p>
+						{/if}
+				</div>
+				<div class="form-group">
+					<label>Note {reviewAction === 'rejected' ? '(required)' : '(optional)'}</label>
+					<textarea class="review-note" bind:value={reviewNote} placeholder={reviewAction === 'rejected' ? 'Reason for rejection…' : 'Optional note…'}></textarea>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-cancel" onclick={() => showReviewModal = false} disabled={reviewing}>Cancel</button>
+				<button
+					class={reviewAction === 'verified' ? 'btn-review-approve' : 'btn-review-reject'}
+					onclick={handleReview}
+					disabled={reviewing}
+				>
+					{reviewing ? 'Processing…' : reviewAction === 'verified' ? 'Approve Payment' : 'Reject Payment'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Image Preview Modal -->
+{#if previewUrl}
+	<div class="modal-overlay" onclick={() => previewUrl = null}>
+		<div class="preview-modal" onclick={(e) => e.stopPropagation()}>
+			<button class="preview-close" onclick={() => previewUrl = null}><X size={20} /></button>
+			<img src={resolvePhotoUrl(previewUrl)} alt="Payment screenshot" class="preview-img" />
+		</div>
+	</div>
+{/if}
 
 <!-- Record Payment Modal -->
 {#if showModal}
@@ -348,7 +469,14 @@
 	/* Proof link */
 	.proof-link { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: var(--primary-bg, #eef2fd); color: var(--primary-deeper, #1a2e80); text-decoration: none; transition: background .15s; }
 	.proof-link:hover { background: var(--primary-bg-mid, #dce4fb); }
+	.proof-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: var(--primary-bg, #eef2fd); color: var(--primary-deeper, #1a2e80); border: none; cursor: pointer; transition: background .15s; }
+	.proof-btn:hover { background: var(--primary-bg-mid, #dce4fb); }
 	.muted { color: var(--text-muted, #8892b0); }
+
+	.preview-modal { position:relative; max-width:90vw; max-height:90vh; display:flex; align-items:center; justify-content:center; }
+	.preview-img { max-width:100%; max-height:90vh; border-radius:8px; box-shadow:0 20px 60px rgba(0,0,0,0.3); }
+	.preview-close { position:absolute; top:-40px; right:0; background:rgba(0,0,0,0.5); color:#fff; border:none; border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+	.preview-close:hover { background:rgba(0,0,0,0.7); }
 
 	/* Modal */
 	.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
@@ -371,6 +499,27 @@
 	.btn-cancel { height: 34px; padding: 0 16px; border: 0.5px solid var(--border, #dce3f5); border-radius: 8px; background: var(--bg-card, #fff); font-family: inherit; font-size: 12px; color: var(--text-light, #5b6684); cursor: pointer; }
 	.btn-submit { height: 34px; padding: 0 16px; border: none; border-radius: 8px; background: var(--primary-deeper, #1a2e80); color: var(--accent, #e8c97e); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 	.btn-submit:disabled { opacity: .5; cursor: not-allowed; }
+
+	.review-badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600; }
+	.rb-pending { background:#fef3c7; color:#92400e; }
+	.rb-verified { background:#d1fae5; color:#065f46; }
+	.rb-rejected { background:#fef2f2; color:#dc2626; }
+	.rb-def { background:var(--bg-muted); color:var(--text-muted); }
+
+	.td-action { text-align:center; }
+	.review-actions { display:flex; gap:4px; justify-content:center; }
+	.btn-approve, .btn-reject { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border:none; border-radius:6px; cursor:pointer; }
+	.btn-approve { background:#d1fae5; color:#065f46; }
+	.btn-approve:hover { background:#a7f3d0; }
+	.btn-reject { background:#fef2f2; color:#dc2626; }
+	.btn-reject:hover { background:#fecaca; }
+
+	.btn-review-approve { height:34px; padding:0 16px; border:none; border-radius:8px; background:#16a34a; color:#fff; font-family:inherit; font-size:12px; font-weight:600; cursor:pointer; }
+	.btn-review-approve:hover { background:#15803d; }
+	.btn-review-reject { height:34px; padding:0 16px; border:none; border-radius:8px; background:#dc2626; color:#fff; font-family:inherit; font-size:12px; font-weight:600; cursor:pointer; }
+	.btn-review-reject:hover { background:#b91c1c; }
+	.review-note { width:100%; min-height:60px; padding:8px 10px; border:0.5px solid var(--border); border-radius:8px; font-family:var(--font-sans); font-size:12px; resize:vertical; }
+	.review-note:focus { border-color:var(--primary); outline:none; }
 
 	@media (max-width: 600px) {
 		.stats-row { grid-template-columns: repeat(2, 1fr); }

@@ -27,7 +27,8 @@
 				agent: '/agent',
 				customer: '/portal',
 				finance_staff: '/finance_staff',
-				service_advisor: '/service_advisor'
+				service_staff: '/service_staff',
+				service_advisor: '/service_staff'
 			};
 			goto(role ? routes[role] || '/' : '/');
 		} catch (err: any) {
@@ -37,7 +38,9 @@
 		}
 	}
 </script>
-
+<header>
+	<title>Login</title>
+</header>
 <div class="container">
 	<div class="left_side">
 		<div class="bg">
@@ -80,7 +83,7 @@
 						</button>
 					</div>
 				</label>
-				<label>
+				<label style="margin-top: 1rem;">
 					<input type="submit" value={loading ? 'Signing in...' : 'Sign in'} disabled={loading}>
 				</label>
 			</form>
@@ -98,7 +101,7 @@
 .container {
 	display: flex;
 	justify-content: space-around;
-	padding: 3rem;
+	padding: 5rem 3rem;
 
 	.left_side {
 		height: 100%;
@@ -124,7 +127,7 @@
 			flex-direction: column;
 			justify-content: center;
 			align-items: center;
-			padding-left: 10rem;
+			padding-left: 4rem;
 			padding-top: 5rem;
 			gap: 2rem;
 
@@ -139,7 +142,7 @@
 				width: 350px;
 				display: flex;
 				flex-direction: column;
-				gap: 2.4rem;
+				gap: 1.3rem;
 
 				label {
 					display: flex;

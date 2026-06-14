@@ -9,12 +9,14 @@
 
 	onMount(async () => {
 		const ok = await auth.checkAuth();
-		if (!ok || auth.role !== 'service_advisor') {
+		if (!ok || (auth.role !== 'service_staff' && auth.role !== 'service_advisor')) {
 			goto('/auth/login');
 		}
 	});
 </script>
-
+<header>
+	<title>Warranty & Services</title>
+</header>
 <div class="layout">
 	<Sidebar />
 	<div class="main-area">

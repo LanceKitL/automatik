@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getAllNotifications, markNotificationRead } from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
 	import { Bell, CreditCard, Wrench, Info, Megaphone, CheckCheck } from '@lucide/svelte';
 	import type { NotificationItem } from '$lib/services/api';
 
@@ -12,6 +13,7 @@
 			const res = await getAllNotifications();
 			notifications = res.data;
 		} catch {
+			toast.error('Failed to load notifications.');
 			notifications = [];
 		} finally {
 			loading = false;

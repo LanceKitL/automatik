@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getFinanceLoansWithoutInsurance, createFinanceInsurance } from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
 	import { X, Plus } from '@lucide/svelte';
 
 	let { onclose }: { onclose: () => void } = $props();
@@ -21,7 +22,7 @@
 			const res = await getFinanceLoansWithoutInsurance();
 			sales = res.data ?? [];
 		} catch {
-			// ignore
+			toast.error('Failed to load sales data.');
 		}
 	});
 
@@ -41,6 +42,7 @@
 				start_date: form.start_date,
 				end_date: form.end_date,
 			});
+			toast.success('Insurance policy created.');
 			window.location.reload();
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Failed to create insurance.';
