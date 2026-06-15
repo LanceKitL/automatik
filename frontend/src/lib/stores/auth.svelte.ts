@@ -2,6 +2,7 @@ import { goto } from '$app/navigation';
 import { getMe, login as apiLogin, logout as apiLogout } from '$lib/services/api';
 
 let currentUser = $state<{ user_id: number; role: string; email: string; username: string } | null>(null);
+let pendingReset = $state(false);
 
 export const auth = {
 	get user() {
@@ -13,11 +14,19 @@ export const auth = {
 	get role() {
 		return currentUser?.role ?? null;
 	},
+	get mustResetPassword() {
+		return pendingReset;
+	},
 
 	async login(credential: string, password: string) {
 		const res = await apiLogin(credential, password);
 		currentUser = res.user;
+		pendingReset = !!res.must_reset_password;
 		return res;
+	},
+
+	clearPendingReset() {
+		pendingReset = false;
 	},
 
 	async logout() {

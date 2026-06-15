@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { getPortalProfile, updatePortalProfile, changePassword } from '$lib/services/api';
 	import { toast } from 'svelte-sonner';
-	import { User, Mail, Phone, MapPin, Lock, Save, Camera } from '@lucide/svelte';
+	import { User, Mail, Phone, MapPin, Lock, Save, Camera, Eye, EyeClosed, KeyRound, ShieldCheck } from '@lucide/svelte';
 	import Loader from '$lib/components/Loader.svelte';
 
 	let loading = $state(true);
@@ -10,6 +10,25 @@
 	let form = $state({ name: '', email: '', phone: '', address: '' });
 	let passwords = $state({ current: '', new: '', confirm: '' });
 	let changingPwd = $state(false);
+
+	let showCurrent = $state(false);
+	let showNew = $state(false);
+	let showConfirm = $state(false);
+
+	let passwordStrength = $derived.by(() => {
+		const p = passwords.new;
+		if (!p) return { label: '', pct: 0, color: '' };
+		let score = 0;
+		if (p.length >= 6) score += 20;
+		if (p.length >= 10) score += 10;
+		if (/[a-z]/.test(p)) score += 15;
+		if (/[A-Z]/.test(p)) score += 15;
+		if (/[0-9]/.test(p)) score += 20;
+		if (/[^a-zA-Z0-9]/.test(p)) score += 20;
+		if (score < 40) return { label: 'Weak', pct: score, color: '#ef4444' };
+		if (score < 70) return { label: 'Medium', pct: score, color: '#f59e0b' };
+		return { label: 'Strong', pct: score, color: '#10b981' };
+	});
 
 	onMount(async () => {
 		try {
@@ -120,22 +139,46 @@
 				<div class="form-row">
 					<div class="form-group">
 						<label>Current Password</label>
-						<input type="password" bind:value={passwords.current} placeholder="••••••••" />
+						<div class="input-with-toggle">
+							<input type={showCurrent ? 'text' : 'password'} bind:value={passwords.current} placeholder="••••••••" />
+							<button type="button" class="pw-toggle" onclick={() => showCurrent = !showCurrent} tabindex="-1">
+								{#if showCurrent}<EyeClosed size={16} />{:else}<Eye size={16} />{/if}
+							</button>
+						</div>
 					</div>
 				</div>
 				<div class="form-row">
 					<div class="form-group">
 						<label>New Password</label>
-						<input type="password" bind:value={passwords.new} placeholder="Min. 6 characters" />
+						<div class="input-with-toggle">
+							<input type={showNew ? 'text' : 'password'} bind:value={passwords.new} placeholder="Min. 6 characters" />
+							<button type="button" class="pw-toggle" onclick={() => showNew = !showNew} tabindex="-1">
+								{#if showNew}<EyeClosed size={16} />{:else}<Eye size={16} />{/if}
+							</button>
+						</div>
+						{#if passwords.new}
+							<div class="strength-bar">
+								<div class="strength-fill" style="width:{passwordStrength.pct}%;background:{passwordStrength.color};"></div>
+							</div>
+							<span class="strength-label" style="color:{passwordStrength.color}">{passwordStrength.label}</span>
+						{/if}
 					</div>
 					<div class="form-group">
 						<label>Confirm New Password</label>
-						<input type="password" bind:value={passwords.confirm} placeholder="Re-enter new password" />
+						<div class="input-with-toggle">
+							<input type={showConfirm ? 'text' : 'password'} bind:value={passwords.confirm} placeholder="Re-enter new password" class:error={passwords.confirm && passwords.new !== passwords.confirm} />
+							<button type="button" class="pw-toggle" onclick={() => showConfirm = !showConfirm} tabindex="-1">
+								{#if showConfirm}<EyeClosed size={16} />{:else}<Eye size={16} />{/if}
+							</button>
+						</div>
+						{#if passwords.confirm && passwords.new !== passwords.confirm}
+							<span class="field-error">Passwords do not match</span>
+						{/if}
 					</div>
 				</div>
 				<div class="form-actions">
-					<button class="btn-primary" onclick={handleChangePassword} disabled={changingPwd}>
-						<Lock size={16} /> {changingPwd ? 'Changing…' : 'Change Password'}
+					<button class="btn-primary" onclick={handleChangePassword} disabled={changingPwd || (passwords.confirm && passwords.new !== passwords.confirm)}>
+						<KeyRound size={16} /> {changingPwd ? 'Changing…' : 'Change Password'}
 					</button>
 				</div>
 			</div>
@@ -173,6 +216,19 @@
 	.btn-primary { display:inline-flex; align-items:center; gap:6px; padding:9px 18px; background:var(--primary); color:var(--text-white); border:none; border-radius:var(--radius-sm); font-size:13px; font-weight:600; cursor:pointer; }
 	.btn-primary:disabled { opacity:0.6; cursor:not-allowed; }
 	.btn-primary:hover:not(:disabled) { opacity:0.9; }
+
+	/* Password toggle */
+	.input-with-toggle { position:relative; }
+	.input-with-toggle input { width:100%; padding:9px 36px 9px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:13px; background:var(--bg-card); color:var(--text-dark); box-sizing:border-box; }
+	.input-with-toggle input:focus { outline:none; border-color:var(--primary); }
+	.input-with-toggle input.error { border-color:#ef4444; }
+	.pw-toggle { position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; color:#9ca3af; cursor:pointer; display:flex; align-items:center; padding:4px; border-radius:4px; }
+	.pw-toggle:hover { color:var(--text-dark); }
+	.strength-bar { height:4px; background:#e5e7eb; border-radius:2px; overflow:hidden; margin-top:2px; }
+	.strength-fill { height:100%; border-radius:2px; transition:width .2s,background .2s; }
+	.strength-label { font-size:10px; font-weight:600; }
+	.field-error { font-size:11px; color:#ef4444; font-weight:500; }
+
 	.saved-msg { font-size:12px; color:#059669; font-weight:600; }
 	.alert-error { background:#fef2f2; color:#dc2626; padding:8px 12px; border-radius:var(--radius-sm); font-size:12px; margin-bottom:12px; }
 	.alert-success { background:#d1fae5; color:#065f46; padding:8px 12px; border-radius:var(--radius-sm); font-size:12px; margin-bottom:12px; }

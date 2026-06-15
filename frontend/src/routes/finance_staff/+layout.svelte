@@ -14,9 +14,9 @@
 		}
 	});
 </script>
-<head>
+<svelte:head>
 	<title>Finance & Insurance</title>
-</head>
+</svelte:head>
 <div class="layout">
 	<Sidebar />
 	<div class="main-area">

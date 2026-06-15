@@ -23,6 +23,7 @@ async function request<T>(
 
 export interface LoginResponse {
 	message: string;
+	must_reset_password?: boolean;
 	user: {
 		user_id: number;
 		role: string;

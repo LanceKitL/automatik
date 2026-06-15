@@ -39,8 +39,12 @@
 	const timestamp = now.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 		+ ' · ' + now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
 
+	const FI_ALLOCATIONS = ['amortization', 'insurance', 'service_fee'];
+
 	function filtered() {
 		return payments.filter(p => {
+			const alloc = String(p.payment_allocation ?? '').toLowerCase();
+			if (!FI_ALLOCATIONS.includes(alloc)) return false;
 			const pm = String(p.payment_method ?? '').toLowerCase();
 			const matchMethod = filterMethod === 'all' || pm === filterMethod;
 			const matchReview = filterReview === 'all' || (p.review_status as string) === filterReview;
@@ -55,11 +59,13 @@
 		});
 	}
 
-	let totalCollected = $derived(payments.reduce((s, p) => s + Number(p.amount_paid), 0));
-	let withProof = $derived(payments.filter(p => p.proof_of_payment).length);
+	let displayPayments = $derived.by(() => filtered());
+
+	let totalCollected = $derived(displayPayments.reduce((s, p) => s + Number(p.amount_paid), 0));
+	let withProof = $derived(displayPayments.filter(p => p.proof_of_payment).length);
 	let todayCount = $derived.by(() => {
 		const today = new Date().toISOString().slice(0, 10);
-		return payments.filter(p => String(p.payment_date ?? '').slice(0, 10) === today).length;
+		return displayPayments.filter(p => String(p.payment_date ?? '').slice(0, 10) === today).length;
 	});
 
 	function methodBadgeClass(m: string | undefined): string {
@@ -72,11 +78,9 @@
 
 	function allocBadgeClass(a: string | undefined): string {
 		const s = (a ?? '').toLowerCase();
-		if (s.includes('down')) return 'ab a-dp';
-		if (s.includes('amort') || s.includes('monthly')) return 'ab a-int';
+		if (s.includes('amort')) return 'ab a-int';
 		if (s.includes('insur')) return 'ab a-ins';
 		if (s.includes('service') || s.includes('fee')) return 'ab a-svc';
-		if (s.includes('full') || s.includes('cash')) return 'ab a-fc';
 		return 'ab a-def';
 	}
 
@@ -238,7 +242,7 @@
 		<div class="loading-state"><span class="spinner"></span><p>Loading payments…</p></div>
 	{:else}
 		<DataTable columns={['ID','Customer','Vehicle','Amount','Method','Allocation','Review','Date','Recorded By','Proof','Action']}>
-			{#each filtered() as p (p.payment_id)}
+			{#each displayPayments as p (p.payment_id)}
 				<tr>
 					<td class="td-id">{p.payment_id}</td>
 					<td class="td-name">{p.customer_name ?? '—'}</td>

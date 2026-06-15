@@ -6,6 +6,7 @@ from conn import run_query, get_db, Error
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from dateutil.relativedelta import relativedelta
+from controllers.settingsController import get_setting_value
 import json
 
 
@@ -60,7 +61,6 @@ def insert_agent_commission(cursor, sale_id, agent_id, selling_price):
 
     Commission is always based on the original selling price (not interest-inflated).
     """
-    from controllers.settingsController import get_setting_value
     agent = run_query("SELECT default_commission_rate FROM agent_details WHERE user_id = %s", (agent_id,), fetch="one", cursor=cursor)
     rate = float(agent["default_commission_rate"]) if agent and agent["default_commission_rate"] else float(get_setting_value("default_commission_rate", default="3.5"))
     amount = float(Decimal(str(selling_price)) * (Decimal(str(rate)) / Decimal("100")))
@@ -536,8 +536,8 @@ def createSale():
 
             if loan_amount <= 0 or loan_amount > selling_price:
                 return jsonify({"message": "loan_amount must be > 0 and <= selling_price."}), 422
-            if term_months < 6 or term_months > 60:
-                return jsonify({"message": "term_months must be between 6 and 60."}), 422
+            if term_months < 6 or term_months > int(get_setting_value("max_loan_term_months", default="60")):
+                return jsonify({"message": f"term_months must be between 6 and {int(get_setting_value('max_loan_term_months', default='60'))}."}), 422
             if interest_rate < 0 or interest_rate > 30:
                 return jsonify({"message": "interest_rate must be between 0 and 30."}), 422
 
@@ -1009,8 +1009,8 @@ def createLoan(sale_id):
 
     if loan_amount <= 0 or loan_amount > float(sale["selling_price"]):
         return jsonify({"message": "loan_amount must be > 0 and <= selling_price."}), 422
-    if term_months < 6 or term_months > 60:
-        return jsonify({"message": "term_months must be between 6 and 60."}), 422
+    if term_months < 6 or term_months > int(get_setting_value("max_loan_term_months", default="60")):
+        return jsonify({"message": f"term_months must be between 6 and {int(get_setting_value('max_loan_term_months', default='60'))}."}), 422
     if interest_rate < 0 or interest_rate > 30:
         return jsonify({"message": "interest_rate must be between 0 and 30."}), 422
 
@@ -1243,8 +1243,8 @@ def recomputeAmortization(loan_id):
     except (TypeError, ValueError):
         return jsonify({"message": "interest_rate and term_months must be numbers."}), 422
 
-    if new_term < 6 or new_term > 60:
-        return jsonify({"message": "term_months must be between 6 and 60."}), 422
+    if new_term < 6 or new_term > int(get_setting_value("max_loan_term_months", default="60")):
+        return jsonify({"message": f"term_months must be between 6 and {int(get_setting_value('max_loan_term_months', default='60'))}."}), 422
     if new_rate < 0 or new_rate > 30:
         return jsonify({"message": "interest_rate must be between 0 and 30."}), 422
 

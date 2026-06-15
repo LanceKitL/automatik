@@ -1,18 +1,17 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { onMount } from 'svelte';
+	import { auth } from '$lib/stores/auth.svelte';
 	import { goto } from '$app/navigation';
-	import { resetPassword } from '$lib/services/api';
+	import { changePassword } from '$lib/services/api';
 	import { toast } from 'svelte-sonner';
-	import { KeyRound, Eye, EyeClosed, ShieldCheck } from '@lucide/svelte';
+	import { Eye, EyeClosed, Lock, KeyRound, ShieldCheck } from '@lucide/svelte';
 
-	let token_id = $derived($page.url.searchParams.get('token_id') ?? '');
-	let raw_token = $derived($page.url.searchParams.get('raw_token') ?? '');
-
+	let currentPassword = $state('');
 	let newPassword = $state('');
 	let confirmPassword = $state('');
 	let loading = $state(false);
-	let success = $state(false);
 
+	let showCurrent = $state(false);
 	let showNew = $state(false);
 	let showConfirm = $state(false);
 
@@ -31,30 +30,50 @@
 		return { label: 'Strong', pct: score, color: '#10b981' };
 	});
 
+	let isFirstLogin = $derived(auth.mustResetPassword);
 	let mismatch = $derived(confirmPassword && newPassword !== confirmPassword);
+
+	onMount(() => {
+		if (!auth.isAuthenticated) goto('/auth/login');
+	});
 
 	async function handleSubmit(e: Event) {
 		e.preventDefault();
-		if (!newPassword || !confirmPassword) {
+		if (!currentPassword || !newPassword || !confirmPassword) {
 			toast.error('Please fill in all fields.');
 			return;
 		}
 		if (newPassword.length < 6) {
-			toast.error('Password must be at least 6 characters.');
+			toast.error('New password must be at least 6 characters.');
 			return;
 		}
 		if (newPassword !== confirmPassword) {
 			toast.error('Passwords do not match.');
 			return;
 		}
+		if (newPassword === currentPassword) {
+			toast.error('New password cannot be the same as your current password.');
+			return;
+		}
 		loading = true;
 		try {
-			await resetPassword({ token_id, raw_token, new_password: newPassword, confirm_password: confirmPassword });
-			toast.success('Password has been reset!');
-			success = true;
-			setTimeout(() => goto('/auth/login'), 2000);
-		} catch (err: unknown) {
-			toast.error(err instanceof Error ? err.message : 'Something went wrong.');
+			await changePassword(currentPassword, newPassword, confirmPassword);
+			toast.success('Password changed successfully!');
+			auth.clearPendingReset();
+
+			// Redirect to the appropriate dashboard
+			const role = auth.role;
+			const routes: Record<string, string> = {
+				admin: '/admin',
+				agent: '/agent',
+				customer: '/portal',
+				finance_staff: '/finance_staff',
+				service_staff: '/service_staff',
+				service_advisor: '/service_staff'
+			};
+			goto(role ? routes[role] || '/' : '/');
+		} catch (e: unknown) {
+			toast.error(e instanceof Error ? e.message : 'Failed to change password.');
 		} finally {
 			loading = false;
 		}
@@ -62,80 +81,98 @@
 </script>
 
 <svelte:head>
-	<title>Reset Password</title>
+	<title>{isFirstLogin ? 'Set Your Password' : 'Change Password'}</title>
 </svelte:head>
 
 <div class="page">
 	<div class="card">
 		<div class="card-icon">
-			<ShieldCheck size={32} />
+			{#if isFirstLogin}
+				<ShieldCheck size={32} />
+			{:else}
+				<Lock size={32} />
+			{/if}
 		</div>
 
-		{#if !token_id || !raw_token}
-			<h1>Invalid Link</h1>
-			<p class="subtitle">This password reset link is invalid or missing. Please request a new one.</p>
-			<a href="/auth/forgot-password" class="back-link">Request new reset link</a>
+		<h1>{isFirstLogin ? 'Set Your Password' : 'Change Password'}</h1>
 
-		{:else if success}
-			<h1>Password Reset!</h1>
-			<p class="subtitle">Your password has been reset successfully. Redirecting to sign in…</p>
-			<a href="/auth/login" class="back-link">Go to Sign In</a>
-
+		{#if isFirstLogin}
+			<p class="subtitle">Welcome! For security, please set a new password to continue.</p>
 		{:else}
-			<h1>Reset Password</h1>
-			<p class="subtitle">Enter your new password below.</p>
-
-			<form onsubmit={handleSubmit}>
-				<div class="field">
-					<label for="new-pw">New Password</label>
-					<div class="input-wrap">
-						<input
-							id="new-pw"
-							type={showNew ? 'text' : 'password'}
-							bind:value={newPassword}
-							placeholder="Min. 6 characters"
-							autocomplete="new-password"
-							disabled={loading}
-						/>
-						<button type="button" class="toggle" onclick={() => showNew = !showNew} tabindex="-1">
-							{#if showNew}<EyeClosed size={18} />{:else}<Eye size={18} />{/if}
-						</button>
-					</div>
-					{#if newPassword}
-						<div class="strength-bar">
-							<div class="strength-fill" style="width:{passwordStrength.pct}%;background:{passwordStrength.color};"></div>
-						</div>
-						<span class="strength-label" style="color:{passwordStrength.color}">{passwordStrength.label}</span>
-					{/if}
-				</div>
-
-				<div class="field">
-					<label for="confirm-pw">Confirm New Password</label>
-					<div class="input-wrap">
-						<input
-							id="confirm-pw"
-							type={showConfirm ? 'text' : 'password'}
-							bind:value={confirmPassword}
-							placeholder="Re-enter new password"
-							autocomplete="new-password"
-							disabled={loading}
-							class:error={mismatch}
-						/>
-						<button type="button" class="toggle" onclick={() => showConfirm = !showConfirm} tabindex="-1">
-							{#if showConfirm}<EyeClosed size={18} />{:else}<Eye size={18} />{/if}
-						</button>
-					</div>
-					{#if mismatch}
-						<span class="field-error">Passwords do not match</span>
-					{/if}
-				</div>
-
-				<button type="submit" class="btn-submit" disabled={loading || !!mismatch}>
-					<KeyRound size={18} />
-					{loading ? 'Resetting…' : 'Reset Password'}
-				</button>
-			</form>
+			<p class="subtitle">Enter your current password and choose a new one.</p>
 		{/if}
+
+		<form onsubmit={handleSubmit}>
+			<div class="field">
+				<label for="current">Current Password</label>
+				<div class="input-wrap">
+					<input
+						id="current"
+						type={showCurrent ? 'text' : 'password'}
+						bind:value={currentPassword}
+						placeholder="Enter current password"
+						autocomplete="current-password"
+						disabled={loading}
+					/>
+					<button type="button" class="toggle" onclick={() => showCurrent = !showCurrent} tabindex="-1">
+						{#if showCurrent}<EyeClosed size={18} />{:else}<Eye size={18} />{/if}
+					</button>
+				</div>
+			</div>
+
+			<div class="field">
+				<label for="new-pw">New Password</label>
+				<div class="input-wrap">
+					<input
+						id="new-pw"
+						type={showNew ? 'text' : 'password'}
+						bind:value={newPassword}
+						placeholder="Min. 6 characters"
+						autocomplete="new-password"
+						disabled={loading}
+					/>
+					<button type="button" class="toggle" onclick={() => showNew = !showNew} tabindex="-1">
+						{#if showNew}<EyeClosed size={18} />{:else}<Eye size={18} />{/if}
+					</button>
+				</div>
+				{#if newPassword}
+					<div class="strength-bar">
+						<div class="strength-fill" style="width:{passwordStrength.pct}%;background:{passwordStrength.color};"></div>
+					</div>
+					<span class="strength-label" style="color:{passwordStrength.color}">{passwordStrength.label}</span>
+				{/if}
+			</div>
+
+			<div class="field">
+				<label for="confirm-pw">Confirm New Password</label>
+				<div class="input-wrap">
+					<input
+						id="confirm-pw"
+						type={showConfirm ? 'text' : 'password'}
+						bind:value={confirmPassword}
+						placeholder="Re-enter new password"
+						autocomplete="new-password"
+						disabled={loading}
+						class:error={mismatch}
+					/>
+					<button type="button" class="toggle" onclick={() => showConfirm = !showConfirm} tabindex="-1">
+						{#if showConfirm}<EyeClosed size={18} />{:else}<Eye size={18} />{/if}
+					</button>
+				</div>
+				{#if mismatch}
+					<span class="field-error">Passwords do not match</span>
+				{/if}
+			</div>
+
+			<button type="submit" class="btn-submit" disabled={loading || !!mismatch}>
+				<KeyRound size={18} />
+				{loading ? 'Updating…' : isFirstLogin ? 'Set Password & Continue' : 'Update Password'}
+			</button>
+
+			{#if !isFirstLogin}
+				<a href="/" class="back-link">Back to Dashboard</a>
+			{/if}
+		</form>
 	</div>
 </div>
 
@@ -283,7 +320,7 @@
 		font-size: 13px;
 		color: #7c9df7;
 		text-decoration: none;
-		margin-top: 0.5rem;
+		margin-top: 0.25rem;
 	}
 	.back-link:hover { text-decoration: underline; }
 </style>

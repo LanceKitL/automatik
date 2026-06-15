@@ -1,0 +1,11 @@
+{% extends "email/_base.html" %}
+{% block content %}
+<tr><td class="body">
+  <h2>Welcome to AutoMatik!</h2>
+  <p>An account has been created for you. Click the button below to set your password and get started.</p>
+  <div class="btn-wrap"><a class="btn" href="{{ set_password_url }}">Set Your Password</a></div>
+  <p style="font-size:13px;color:#9ca3af;">This link is valid for 1 hour. If you did not expect this email, please ignore it.</p>
+  <p style="font-size:13px;color:#9ca3af;">If the button doesn't work, copy and paste this URL into your browser:</p>
+  <p style="font-size:11px;color:#6b7280;word-break:break-all;">{{ set_password_url }}</p>
+</td></tr>
+{% endblock %}

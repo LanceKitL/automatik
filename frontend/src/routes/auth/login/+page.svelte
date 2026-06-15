@@ -21,6 +21,13 @@
 		try {
 			await auth.login(credential.trim(), password);
 			toast.success('Logged in successfully!');
+
+			// If first login / password must be changed, redirect to change-password
+			if (auth.mustResetPassword) {
+				goto('/auth/change-password');
+				return;
+			}
+
 			const role = auth.role;
 			const routes: Record<string, string> = {
 				admin: '/admin',
@@ -38,9 +45,9 @@
 		}
 	}
 </script>
-<header>
+<svelte:head>
 	<title>Login</title>
-</header>
+</svelte:head>
 <div class="container">
 	<div class="left_side">
 		<div class="bg">

@@ -38,17 +38,27 @@ def getDashboard():
                             fetch="all")
   
   total_commissions = run_query("""
-                                 SELECT s.sale_id, s.selling_price, s.selling_price * (ad.default_commission_rate * 0.01) AS total_commission FROM sales s
-                                 JOIN agent_details ad ON s.agent_id = ad.user_id
-                                 WHERE ad.user_id = %s
-                                """,
-                                (current_agent,),
-                                fetch="all")
+      SELECT s.sale_id, s.selling_price,
+             s.selling_price * (
+               COALESCE(NULLIF(ad.default_commission_rate, 0),
+                 (SELECT COALESCE(setting_value, 3.5) FROM system_settings WHERE setting_key = 'default_commission_rate'),
+                 3.5
+               ) * 0.01
+             ) AS total_commission
+      FROM sales s
+      JOIN agent_details ad ON s.agent_id = ad.user_id
+      WHERE ad.user_id = %s
+  """, (current_agent,), fetch="all")
 
   commission_trend = run_query("""
       SELECT
           DATE_FORMAT(s.sale_date, '%Y-%m') as month,
-          COALESCE(SUM(s.selling_price * (ad.default_commission_rate * 0.01)), 0) as total_commission,
+          COALESCE(SUM(s.selling_price * (
+            COALESCE(NULLIF(ad.default_commission_rate, 0),
+              (SELECT COALESCE(setting_value, 3.5) FROM system_settings WHERE setting_key = 'default_commission_rate'),
+              3.5
+            ) * 0.01
+          )), 0) as total_commission,
           COALESCE(SUM(s.selling_price), 0) as total_revenue
       FROM sales s
       JOIN agent_details ad ON s.agent_id = ad.user_id

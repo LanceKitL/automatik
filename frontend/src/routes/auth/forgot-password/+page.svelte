@@ -1,38 +1,37 @@
 <script lang="ts">
 	import { forgotPassword } from '$lib/services/api';
+	import { toast } from 'svelte-sonner';
 	import logo from '$lib/assets/LOGO.png';
 	import left from '$lib/assets/AUTH/DESIGN.png';
 	import { Mail } from '@lucide/svelte';
 
 	let email = $state('');
-	let message = $state('');
-	let error = $state('');
 	let loading = $state(false);
+	let sent = $state(false);
 
 	async function handleSubmit(e: Event) {
 		e.preventDefault();
-		error = '';
-		message = '';
 
 		if (!email.trim()) {
-			error = 'Please enter your email address.';
+			toast.error('Please enter your email address.');
 			return;
 		}
 
 		loading = true;
 		try {
-			const res = await forgotPassword(email.trim());
-			message = res.message;
+			await forgotPassword(email.trim());
+			toast.success('Reset link sent! Check your email.');
+			sent = true;
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Something went wrong';
+			toast.error(err instanceof Error ? err.message : 'Something went wrong.');
 		} finally {
 			loading = false;
 		}
 	}
 </script>
-<header>
+<svelte:head>
 	<title>Forgot Password</title>
-</header>
+</svelte:head>
 <div class="container">
 	<div class="left_side">
 		<div class="bg">
@@ -53,14 +52,6 @@
 
 			<!-- INPUTS -->
 			<form class="sec_2" onsubmit={handleSubmit}>
-				{#if message}
-					<p class="success">{message}</p>
-				{/if}
-
-				{#if error}
-					<p class="error">{error}</p>
-				{/if}
-
 				<label for="email">
 					Email
 					<div class="input-wrap">
@@ -197,24 +188,6 @@
 						opacity: 0.6;
 						cursor: not-allowed;
 					}
-				}
-
-				.success {
-					color: #16a34a;
-					background: #dcfce7;
-					padding: 0.5rem;
-					border-radius: 4px;
-					font-size: 14px;
-					margin: 0;
-				}
-
-				.error {
-					color: #dc2626;
-					background: #fee2e2;
-					padding: 0.5rem;
-					border-radius: 4px;
-					font-size: 14px;
-					margin: 0;
 				}
 			}
 

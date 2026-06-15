@@ -3,9 +3,9 @@
 	import left from '$lib/assets/AUTH/DESIGN.png';
 	import { ArrowLeft } from '@lucide/svelte';
 </script>
-<header>
+<svelte:head>
 	<title>How to get an Account</title>
-</header>
+</svelte:head>
 <div class="container">
 	<div class="left_side">
 		<div class="bg">

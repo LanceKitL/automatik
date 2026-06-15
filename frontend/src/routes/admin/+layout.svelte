@@ -14,9 +14,9 @@
 		}
 	});
 </script>
-<header>
-  <title>Admin Portal</title>
-</header>
+<svelte:head>
+	<title>Admin Portal</title>
+</svelte:head>
 <div class="layout">
 	<Sidebar />
 	<div class="main-area">

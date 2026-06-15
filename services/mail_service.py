@@ -221,6 +221,20 @@ def send_password_reset_confirmation(email):
     msg.body = "Your password was successfully reset. If you did not do this, please contact support."
     mail.send(msg)
 
+def send_account_created(email, name, set_password_url):
+    """Send a welcome email with a link for the user to set their own password."""
+    msg = Message(
+        sender=("AutoMatik", "AutoMatik@services.com"),
+        subject="Your AutoMatik Account Has Been Created",
+        recipients=[email]
+    )
+    msg.html = _render(
+        'email/account_created.html',
+        name=name,
+        set_password_url=set_password_url
+    )
+    mail.send(msg)
+
 def send_custom_email(to_email, subject, body):
     """Send a plain-text email with an arbitrary subject and body."""
     msg = Message(

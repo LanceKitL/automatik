@@ -14,9 +14,9 @@
 		}
 	});
 </script>
-<header>
+<svelte:head>
 	<title>Customer Portal</title>
-</header>
+</svelte:head>
 <div class="layout">
 	<Sidebar />
 	<div class="main-area">

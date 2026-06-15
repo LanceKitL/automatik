@@ -1,9 +1,11 @@
-import os
+import os, secrets, string
 from flask import jsonify, request, session
 from utils.log import audit_log
 from conn import run_query
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
+from utils.token_helper import PasswordResetToken
+from services.mail_service import send_account_created
 import json
 
 def adminDashboard():
@@ -402,17 +404,21 @@ def delete_user_with(user_id):
     return jsonify({"message": f"user {user_id} deleted successfully!"}), 200
 
 def createUser():
-    """Create a new user (admin, agent, or customer)."""
+    """Create a new user (admin, agent, or customer).
+
+    Admin provides username, email, role, and optionally a password.
+    The user is created with must_reset_password=1 and sent a "Set Your Password" email
+    with a one-time token link.
+    """
     data = request.get_json()
 
     username = data.get("username")
     email = data.get("email")
-    password = data.get("password")
     role = data.get("role")
     full_name = data.get("full_name")
 
-    if not all([username, email, password, role]):
-        return jsonify({"message": "username, email, password, and role are required."}), 400
+    if not all([username, email, role]):
+        return jsonify({"message": "username, email, and role are required."}), 400
 
     if role not in ("admin", "agent", "customer", "service_staff", "service_advisor", "finance_staff"):
         return jsonify({"message": "role must be admin, agent, customer, service_staff, service_advisor, or finance_staff."}), 400
@@ -426,9 +432,12 @@ def createUser():
     if existing:
         return jsonify({"message": "Username or email already exists."}), 400
 
-    hashed_pw = generate_password_hash(password)
+    # Generate a random temp password — user will set their own via reset link
+    temp_password = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12))
+    hashed_pw = generate_password_hash(temp_password)
+
     user_id = run_query(
-        "INSERT INTO users (username, email, role, hashed_password) VALUES (%s, %s, %s, %s)",
+        "INSERT INTO users (username, email, role, hashed_password, must_reset_password) VALUES (%s, %s, %s, %s, 1)",
         (username, email, role, hashed_pw),
     )
 
@@ -452,8 +461,26 @@ def createUser():
             (user_id, cust_num),
         )
 
+    # Generate a password-reset token so the user can set their own password
+    token = PasswordResetToken(user_id)
+    from utils.log import get_local_ip
+    set_password_url = f"http://{get_local_ip()}:5173/auth/reset-password?token_id={token['token_id']}&raw_token={token['raw_token']}"
+
+    # Send email in background thread
+    try:
+        from flask import copy_current_request_context
+        import threading
+
+        @copy_current_request_context
+        def _send_welcome():
+            send_account_created(email, full_name or username, set_password_url)
+
+        threading.Thread(target=_send_welcome, daemon=True).start()
+    except Exception as e:
+        print(f"[mail] Failed to send account-created email: {e}")
+
     return jsonify({
-        "message": "User created successfully!",
+        "message": "User created successfully! An email has been sent with instructions to set their password.",
         "user_id": user_id,
         "role": role,
     }), 201

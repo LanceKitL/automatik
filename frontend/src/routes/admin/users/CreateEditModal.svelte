@@ -87,14 +87,15 @@
 				onSaved();
 				onClose();
 			} else {
-				// Create mode
-				if (!form.password) {
-					toast.error('Password is required for new users.');
-					saving = false;
-					return;
-				}
-				await createUser(form);
-				toast.success('User created.');
+				// Create mode — password is optional (auto-generated, user sets via email link)
+				await createUser({
+					username: form.username,
+					email: form.email,
+					password: form.password || undefined,
+					role: form.role,
+					full_name: form.full_name,
+				});
+				toast.success('User created. An email has been sent with instructions to set their password.');
 				onSaved();
 				onClose();
 			}

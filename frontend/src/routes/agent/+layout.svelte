@@ -16,9 +16,9 @@
 		}
 	});
 </script>
-<header>
+<svelte:head>
 	<title>Agent Portal</title>
-</header>
+</svelte:head>
 <div class="layout">
 	<Sidebar />
 	<div class="main-area">

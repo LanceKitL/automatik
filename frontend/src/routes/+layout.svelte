@@ -5,10 +5,8 @@
 
 	let { children } = $props();
 </script>
-<header>
-	<title>Homepage</title>
-</header>
 <svelte:head>
+	<title>AutoMatik</title>
 	<link rel="icon" href={favicon} />
 </svelte:head>
 

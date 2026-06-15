@@ -10,9 +10,8 @@ from dotenv import load_dotenv
 load_dotenv()                            # Load .env before any other import
 
 # ── Core imports ─────────────────────────────────────────────────────────
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 from datetime import timedelta
-from flask_cors import CORS
 import os
 
 # ── Application modules ──────────────────────────────────────────────────
@@ -70,8 +69,18 @@ app.register_blueprint(service_staff_bp, url_prefix="/service_staff")
 
 
 # ── CORS ─────────────────────────────────────────────────────────────────
-# Allow the Vite dev-server origin (localhost:5173) to make credentialed requests.
-CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
+# Dynamically allow the frontend origin (supports localhost and IP-based dev).
+@app.after_request
+def set_cors_headers(response):
+    origin = request.headers.get("Origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    if request.method == "OPTIONS":
+        response.status_code = 204
+    return response
 
 # ── Cache configuration ──────────────────────────────────────────────────
 # Default: SimpleCache (in-memory).  For production, set CACHE_TYPE=RedisCache

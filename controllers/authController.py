@@ -102,6 +102,7 @@ def loginHandler():
 
     return jsonify({
         "message": "Logged in successfully!",
+        "must_reset_password": bool(user["must_reset_password"]),
         "user": {
             "user_id": user["user_id"],
             "role": user["role"],
@@ -255,7 +256,7 @@ def AgentAccountHandler():
         # if everything is success
 
         # prepare the link dedicated for 'verifyEmail' function
-        link = f"http://{get_local_ip()}:5000/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}"
+        link = f"http://{get_local_ip()}:5173/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}"
         #print("token_id", token["token_id"]) # ENDPOINT TESTING
         #print("raw_token", token["raw_token"]) # for endpoint testing || delete this before pushing
         send_email_verification(email,full_name.split(" ")[0], link)
@@ -329,7 +330,7 @@ def changePassword():
     hashed_password = generate_password_hash(new_password)
 
     sql = f"""
-            UPDATE users SET hashed_password = %s WHERE user_id = %s              
+            UPDATE users SET hashed_password = %s, must_reset_password = 0 WHERE user_id = %s              
             """
     
     run_query(sql,(hashed_password, user_id))
@@ -370,7 +371,7 @@ def resendVerification(email):
     if not token:
         return jsonify({"message": "Token generation failed."}), 500
 
-    link = f"http://{get_local_ip()}:5000/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}"
+    link = f"http://{get_local_ip()}:5173/auth/verify?token_id={token['token_id']}&raw_token={token['raw_token']}"
     send_email_verification(email, email.split('@')[0], link)
 
     return jsonify({"message": "Verification email resent successfully."}), 200
@@ -477,14 +478,14 @@ def forgotPassword():
     # Always return the same message regardless of whether the email exists
     # to prevent user enumeration attacks.
     if not user:
-        return jsonify({"message": "If that email exists, a reset link has been sent."}), 200
+        return jsonify({"message": "Email not found. Please check the email address you entered."}), 404
 
     token = PasswordResetToken(user["user_id"])
 
     if not token:
         return jsonify({"message": "Token generation failed."}), 500
 
-    reset_url = f"http://localhost:5173/auth/reset-password?token_id={token['token_id']}&raw_token={token['raw_token']}"
+    reset_url = f"http://{get_local_ip()}:5173/auth/reset-password?token_id={token['token_id']}&raw_token={token['raw_token']}"
     from flask import copy_current_request_context
     import threading
 
